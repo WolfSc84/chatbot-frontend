@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+*.pem
+npm-debug.log*
+.env*.local
+next-env.d.ts
+*.tsbuildinfo
+
+# Root .gitignore ignores "lib/" (Python build artifacts); re-include the
+# Next.js source lib folder for this frontend.
+!lib/
+!lib/**
