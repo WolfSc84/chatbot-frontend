@@ -7,13 +7,6 @@ import { useAssistant, type ProductSelection } from '@/context/AssistantContext'
 
 const GRAMMAR_CHECK_STORAGE_KEY = 'platform:grammarCheckEnabled';
 
-// Selectable tenants for the product picker. Add new tenants here — the dropdown
-// scales without layout changes (unlike a fixed row of buttons).
-const TENANT_OPTIONS: { id: ProductSelection; label: string }[] = [
-  { id: 'sales', label: 'Sales' },
-  { id: 'knowledge_center', label: 'Knowledge Center' },
-];
-
 // ---------------------------------------------------------------------------
 // Animated audio-level bars shown while the mic is active
 // ---------------------------------------------------------------------------
@@ -115,7 +108,8 @@ function isEdgeBrowser(): boolean {
 }
 
 export function ChatInput() {
-  const { draft, setDraft, sendMessage, status, product, setProduct, messages } = useAssistant();
+  const { draft, setDraft, sendMessage, status, product, setProduct, availableTenants, messages } =
+    useAssistant();
   // The product (Sales / Knowledge Center) may only be chosen at the start of a
   // conversation. Once the first message is sent it is locked for the thread;
   // starting a new chat (or resuming a session with no saved product) allows
@@ -608,7 +602,7 @@ export function ChatInput() {
                 <option value="" disabled>
                   Select tenant…
                 </option>
-                {TENANT_OPTIONS.map((opt) => (
+                {availableTenants.map((opt) => (
                   <option key={opt.id} value={opt.id}>
                     {opt.label}
                   </option>
