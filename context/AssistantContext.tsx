@@ -6,11 +6,13 @@ import {
   generateExportSummary,
   getRawTicket,
   getSessionMessages,
+  getTenants,
   getTicketBoard,
   listAllTenantSessions,
   streamChat,
   synthesizeAudio,
   tenantOfSessionId,
+  type TenantOption,
 } from '@/lib/api';
 import type {
   AgentProgressStep,
@@ -25,8 +27,12 @@ import { IS_L1_SUPPORT_MODE } from '@/lib/flags';
 type AssistantStatus = 'ready' | 'streaming' | 'error';
 export type AssistantView = 'home' | 'chat' | 'history' | 'tickets';
 
-/** Mandatory product context the user must pick before sending a message. */
-export type ProductSelection = 'sales' | 'knowledge_center';
+/**
+ * Mandatory tenant context the user must pick before sending a message. A tenant
+ * id (`^[a-z0-9_]{1,64}$`); the selectable set is discovered dynamically from the
+ * backend (`availableTenants`), so onboarding a tenant needs no frontend change.
+ */
+export type ProductSelection = string;
 
 interface AssistantContextValue {
   isOpen: boolean;
@@ -39,6 +45,8 @@ interface AssistantContextValue {
 
   product: ProductSelection | null;
   setProduct: (product: ProductSelection | null) => void;
+  /** Tenants the current user may select (dynamic, backend-driven). */
+  availableTenants: TenantOption[];
 
   // L1 support-team operator identity (L1 variation). In standard mode
   // operatorReady is always true and the other fields are unused.
@@ -190,6 +198,19 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(true);
   const [view, setView] = useState<AssistantView>('home');
   const [product, setProduct] = useState<ProductSelection | null>(null);
+  const [availableTenants, setAvailableTenants] = useState<TenantOption[]>([]);
+
+  // Discover the tenants this user may select (dynamic, backend-driven). Fetched
+  // once on mount so onboarding a tenant needs no frontend change.
+  useEffect(() => {
+    let cancelled = false;
+    getTenants().then((tenants) => {
+      if (!cancelled) setAvailableTenants(tenants);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // L1 support-team operator identity (L1 variation), persisted in localStorage.
   const [operatorName, setOperatorName] = useState<string | null>(null);
@@ -690,6 +711,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       setView,
       product,
       setProduct,
+      availableTenants,
       operatorName,
       operatorEmail,
       operatorReady,
@@ -748,6 +770,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       toggle,
       view,
       product,
+      availableTenants,
       operatorName,
       operatorEmail,
       operatorReady,

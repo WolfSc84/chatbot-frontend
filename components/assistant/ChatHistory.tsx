@@ -2,6 +2,7 @@
 
 import { MessageSquare, Trash2, ChevronLeft, History, UserRound } from 'lucide-react';
 import type { SessionInfo } from '@/lib/types';
+import { useAssistant } from '@/context/AssistantContext';
 
 function formatRelative(iso?: string | null): string {
   if (!iso) return '';
@@ -34,12 +35,6 @@ interface ChatHistoryProps {
   onDelete: (sessionId: string) => void;
 }
 
-/** Presentation for a tenant tag pill (label + colors). */
-const TENANT_TAG: Record<string, { label: string; className: string }> = {
-  sales: { label: 'Sales', className: 'bg-accent-100 text-accent-700' },
-  knowledge_center: { label: 'Knowledge Center', className: 'bg-indigo-100 text-indigo-700' },
-};
-
 function tenantOf(session: SessionInfo): string | null {
   if (session.application_id) return session.application_id;
   const i = session.session_id.indexOf('::');
@@ -54,6 +49,9 @@ export function ChatHistory({
   onOpen,
   onDelete,
 }: ChatHistoryProps) {
+  const { availableTenants } = useAssistant();
+  const tenantLabel = (id: string | null): string | null =>
+    id ? (availableTenants.find((t) => t.id === id)?.label ?? id) : null;
   return (
     <div className="space-y-3">
       <button
@@ -96,13 +94,10 @@ export function ChatHistory({
                 </span>
                 <span className="mt-0.5 flex flex-wrap items-center gap-2">
                   {(() => {
-                    const tenant = tenantOf(session);
-                    const tag = tenant ? TENANT_TAG[tenant] : null;
-                    return tag ? (
-                      <span
-                        className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${tag.className}`}
-                      >
-                        {tag.label}
+                    const label = tenantLabel(tenantOf(session));
+                    return label ? (
+                      <span className="inline-flex items-center rounded-full bg-accent-100 px-1.5 py-0.5 text-[10px] font-semibold text-accent-700">
+                        {label}
                       </span>
                     ) : null;
                   })()}
