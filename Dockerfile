@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # =============================================================================
-# Multi-stage build for the the assistant chatbot web interface (Next.js 14). A builder
+# Multi-stage build for the assistant chatbot web interface (Next.js 16). A builder
 # stage installs dependencies and compiles the app; a slim runtime stage copies
 # ONLY the "standalone" traced output (self-contained server + minimal
 # node_modules) — no npm, no build toolchain, no dev deps — reducing image size
