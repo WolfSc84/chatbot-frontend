@@ -21,6 +21,7 @@ const CHAT_TRANSCRIBE_URL = '/api/chat/transcribe';
 const CHAT_TRANSCRIBE_CORRECT_URL = '/api/chat/transcribe/correct';
 const CHAT_EXPORT_SUMMARY_URL = '/api/chat/export-summary';
 const SESSIONS_URL = '/api/sessions';
+const TENANTS_URL = '/api/tenants';
 const TICKETS_BOARD_URL = '/api/tickets/board';
 const CHAT_WARMUP_URL = '/api/chat/warmup';
 const CHAT_LOGIN_URL = '/api/chat/login';
@@ -275,8 +276,27 @@ export async function listSessions(limit = 50, product?: string | null): Promise
   return data.sessions ?? [];
 }
 
-/** Known tenants for cross-tenant history aggregation. */
-export const KNOWN_TENANTS = ['sales', 'knowledge_center'] as const;
+/** A tenant the current user may select, as returned by the backend. */
+export interface TenantOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Fetch the tenants the authenticated user may select (dynamic, backend-driven).
+ * Onboarding a tenant needs no frontend change. Returns [] on any error so the
+ * UI degrades gracefully (the backend still fail-closed authorizes each request).
+ */
+export async function getTenants(): Promise<TenantOption[]> {
+  try {
+    const response = await fetch(TENANTS_URL, { method: 'GET', cache: 'no-store' });
+    if (!response.ok) return [];
+    const data = (await response.json()) as { tenants?: { id: string; display_name?: string }[] };
+    return (data.tenants ?? []).map((t) => ({ id: t.id, label: t.display_name || t.id }));
+  } catch {
+    return [];
+  }
+}
 
 /** Derive the tenant from the `tenant::…` session-id prefix (fallback tag). */
 export function tenantOfSessionId(id: string): string | null {
@@ -285,13 +305,15 @@ export function tenantOfSessionId(id: string): string | null {
 }
 
 /**
- * Fetch chat history across ALL known tenants for the current user, tagged and
- * merged newest-first. Each per-tenant call stays tenant-scoped and guarded
- * server-side (no cross-tenant query), so isolation is preserved by construction.
+ * Fetch chat history across ALL tenants the user may select, tagged and merged
+ * newest-first. Tenants are discovered dynamically; each per-tenant call stays
+ * tenant-scoped and guarded server-side (no cross-tenant query), so isolation is
+ * preserved by construction.
  */
 export async function listAllTenantSessions(limit = 50): Promise<SessionInfo[]> {
+  const tenants = await getTenants();
   const perTenant = await Promise.all(
-    KNOWN_TENANTS.map((t) => listSessions(limit, t).catch(() => [] as SessionInfo[])),
+    tenants.map((t) => listSessions(limit, t.id).catch(() => [] as SessionInfo[])),
   );
   const seen = new Set<string>();
   return perTenant

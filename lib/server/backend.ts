@@ -68,25 +68,21 @@ export function getBearerToken(): string {
  * A raw client value is never forwarded downstream — an unknown/malformed tenant
  * fails closed to a safe default so strict backend enforcement is never bypassed.
  */
-export const ALLOWED_TENANTS = ['sales', 'knowledge_center'] as const;
 export const TENANT_ID_RE = /^[a-z0-9_]{1,64}$/;
 
 /**
  * Resolve a client-supplied product into a validated tenant id.
- * Trims + lowercases, then requires both the `^[a-z0-9_]{1,64}$` shape and
- * membership in {@link ALLOWED_TENANTS}. Anything else falls back to
- * `NEXT_PUBLIC_DEFAULT_TENANT` (default `sales`) — fail closed, degrade safe.
+ * Trims + lowercases, then requires the `^[a-z0-9_]{1,64}$` shape (injection
+ * guard). The proxy no longer hardcodes the tenant list — tenants are discovered
+ * dynamically from the backend (`/tenants`), so the backend is authoritative for
+ * whether a well-formed tenant is known/active and whether the caller may select
+ * it (fail-closed 400/403). A malformed/absent value falls back to
+ * `NEXT_PUBLIC_DEFAULT_TENANT` (default `sales`) — degrade safe.
  */
 export function resolveTenant(product?: string | null): string {
   const fallback = process.env.NEXT_PUBLIC_DEFAULT_TENANT ?? 'sales';
   const candidate = (product ?? '').trim().toLowerCase();
-  if (
-    TENANT_ID_RE.test(candidate) &&
-    (ALLOWED_TENANTS as readonly string[]).includes(candidate)
-  ) {
-    return candidate;
-  }
-  return fallback;
+  return TENANT_ID_RE.test(candidate) ? candidate : fallback;
 }
 
 /** Build the backend tenant header from a (validated) product value. */
