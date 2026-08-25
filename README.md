@@ -71,9 +71,17 @@ app/
 components/assistant/           # embedded assistant UI (chat window, input, history)
 context/AssistantContext.tsx    # assistant state incl. active-tenant selection
 lib/
-├── api.ts                      # browser → BFF client
+├── api.ts                      # browser → BFF client (forwards reply_language on chat)
+├── i18n.ts                     # EN/ES UI strings + language state for the toggle
 └── server/backend.ts           # server-side backend base URL + bearer injection
 ```
+
+## Language toggle (bilingual EN/ES)
+
+The assistant exposes a **language toggle** that does two things: it switches the UI chrome
+(strings from `lib/i18n.ts`) and forces the assistant's reply language by sending
+`reply_language` (`en` | `es`, or `auto` to let the backend detect it) on each chat request.
+The BFF passes the field straight through to `ca-ai-core`, which relays it to `ca-agentic`.
 
 ## Multitenancy
 
