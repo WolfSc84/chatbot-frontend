@@ -150,8 +150,9 @@ export function ChatInput() {
   // reports a reachable server-side STT model (env-driven; see STT_MODEL).
   const [preferBrowserStt, setPreferBrowserStt] = useState(true);
   // Grammar/spelling correction on typed and transcribed input. Persists per
-  // user via localStorage; defaults to on.
-  const [grammarCheckEnabled, setGrammarCheckEnabled] = useState(true);
+  // user via localStorage; opt-in / defaults to OFF (Phase 22) — it's a full extra
+  // LLM round-trip that blocks the send, so the user turns it on when they want it.
+  const [grammarCheckEnabled, setGrammarCheckEnabled] = useState(false);
 
   useEffect(() => {
     try {
@@ -209,7 +210,9 @@ export function ChatInput() {
     // chatbot receives clean, well-formed input. Falls back to the original
     // text if correction fails — never block the user from sending.
     let toSend = text;
-    if (grammarCheckEnabled) {
+    // Skip when this exact text was already corrected during voice capture so a
+    // voice turn never pays for two correction round-trips (Phase 22).
+    if (grammarCheckEnabled && text !== lastCorrectedRef.current) {
       setIsCorrecting(true);
       try {
         toSend = await correctTranscript(text, currentPage, product);
@@ -314,9 +317,19 @@ export function ChatInput() {
     };
   }, []);
 
-  const appendTranscript = (transcript: string) => {
+  // Tracks the draft value that has already been grammar-corrected (during voice
+  // capture) so submit() doesn't correct the same text a second time (Phase 22:
+  // "correct at most once"). Any manual edit diverges from this, so typed changes
+  // still get corrected on send.
+  const lastCorrectedRef = useRef('');
+
+  const appendTranscript = (transcript: string, corrected = false) => {
     const currentDraft = draftRef.current.trim();
-    setDraft(currentDraft ? `${currentDraft} ${transcript}` : transcript);
+    const next = currentDraft ? `${currentDraft} ${transcript}` : transcript;
+    setDraft(next);
+    // Mark the whole draft corrected only when the appended text was itself
+    // corrected AND nothing uncorrected preceded it; otherwise clear the marker.
+    lastCorrectedRef.current = corrected && !currentDraft ? next.trim() : '';
   };
 
   const startBrowserSpeechRecognition = async () => {
@@ -433,7 +446,7 @@ export function ChatInput() {
       }
       setIsCorrecting(true);
       correctTranscript(transcript, currentPage, product)
-        .then((corrected) => { appendTranscript(corrected); })
+        .then((corrected) => { appendTranscript(corrected, true); })
         .catch(() => { appendTranscript(transcript); })
         .finally(() => { setIsCorrecting(false); });
     };
@@ -513,7 +526,7 @@ export function ChatInput() {
           }
           setIsCorrecting(true);
           const corrected = await correctTranscript(transcript, currentPage, product);
-          appendTranscript(corrected);
+          appendTranscript(corrected, true);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : 'Voice transcription failed.';
