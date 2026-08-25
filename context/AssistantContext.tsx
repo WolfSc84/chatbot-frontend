@@ -7,6 +7,7 @@ import {
   getRawTicket,
   getSessionMessages,
   getTenants,
+  SessionExpiredError,
   getTicketBoard,
   listAllTenantSessions,
   streamChat,
@@ -47,6 +48,8 @@ interface AssistantContextValue {
   setProduct: (product: ProductSelection | null) => void;
   /** Tenants the current user may select (dynamic, backend-driven). */
   availableTenants: TenantOption[];
+  /** True when tenant discovery got a 401 — the session died; prompt a re-login. */
+  sessionExpired: boolean;
 
   // L1 support-team operator identity (L1 variation). In standard mode
   // operatorReady is always true and the other fields are unused.
@@ -199,14 +202,20 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [view, setView] = useState<AssistantView>('home');
   const [product, setProduct] = useState<ProductSelection | null>(null);
   const [availableTenants, setAvailableTenants] = useState<TenantOption[]>([]);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // Discover the tenants this user may select (dynamic, backend-driven). Fetched
-  // once on mount so onboarding a tenant needs no frontend change.
+  // once on mount so onboarding a tenant needs no frontend change. A 401 here means
+  // the session expired on an already-open tab — surface it instead of a dead dropdown.
   useEffect(() => {
     let cancelled = false;
-    getTenants().then((tenants) => {
-      if (!cancelled) setAvailableTenants(tenants);
-    });
+    getTenants()
+      .then((tenants) => {
+        if (!cancelled) setAvailableTenants(tenants);
+      })
+      .catch((err) => {
+        if (!cancelled && err instanceof SessionExpiredError) setSessionExpired(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -712,6 +721,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       product,
       setProduct,
       availableTenants,
+      sessionExpired,
       operatorName,
       operatorEmail,
       operatorReady,
@@ -771,6 +781,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       view,
       product,
       availableTenants,
+      sessionExpired,
       operatorName,
       operatorEmail,
       operatorReady,

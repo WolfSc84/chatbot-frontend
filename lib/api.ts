@@ -282,20 +282,33 @@ export interface TenantOption {
   label: string;
 }
 
+/** Thrown when the backend rejects a call with 401 — the session is dead and the
+ *  user must re-authenticate. Distinct from a genuinely empty result so the UI can
+ *  prompt a re-login instead of silently showing "no tenants". */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired');
+    this.name = 'SessionExpiredError';
+  }
+}
+
 /**
  * Fetch the tenants the authenticated user may select (dynamic, backend-driven).
- * Onboarding a tenant needs no frontend change. Returns [] on any error so the
- * UI degrades gracefully (the backend still fail-closed authorizes each request).
+ * Onboarding a tenant needs no frontend change. Throws SessionExpiredError on 401
+ * (session dead → prompt re-login); returns [] on network error / genuine empty so
+ * the UI still degrades gracefully (the backend also fail-closed authorizes each request).
  */
 export async function getTenants(): Promise<TenantOption[]> {
+  let response: Response;
   try {
-    const response = await fetch(TENANTS_URL, { method: 'GET', cache: 'no-store' });
-    if (!response.ok) return [];
-    const data = (await response.json()) as { tenants?: { id: string; display_name?: string }[] };
-    return (data.tenants ?? []).map((t) => ({ id: t.id, label: t.display_name || t.id }));
+    response = await fetch(TENANTS_URL, { method: 'GET', cache: 'no-store' });
   } catch {
-    return [];
+    return []; // network error — not an auth problem
   }
+  if (response.status === 401) throw new SessionExpiredError();
+  if (!response.ok) return [];
+  const data = (await response.json()) as { tenants?: { id: string; display_name?: string }[] };
+  return (data.tenants ?? []).map((t) => ({ id: t.id, label: t.display_name || t.id }));
 }
 
 /** Derive the tenant from the `tenant::…` session-id prefix (fallback tag). */
