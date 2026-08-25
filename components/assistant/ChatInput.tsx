@@ -174,17 +174,12 @@ export function ChatInput() {
   // Current page path used as correction context
   const currentPage = typeof window !== 'undefined' ? window.location.pathname : undefined;
 
-  // On mount: probe whether the backend has a reachable server-side STT model
-  // (env-driven, provider-agnostic). If it does, use it (higher quality);
-  // otherwise stay on browser recognition.
-  useEffect(() => {
-    fetch('/api/chat/transcribe/status')
-      .then((r) => r.json())
-      .then((data: { available?: boolean }) => {
-        if (data.available === true) setPreferBrowserStt(false);
-      })
-      .catch(() => { /* keep browser STT on network error */ });
-  }, []);
+  // Voice input uses the browser's built-in live recognition: it transcribes
+  // while you speak, with no upload / no ca-core→ca-agentic hop / no single-shot
+  // model wait — the fastest path for the demo. The server-side STT model
+  // (env-driven, higher quality but record→stop→upload→2-hop→non-streaming) is
+  // left intact behind `preferBrowserStt=false` for a future streaming build;
+  // to re-enable it, restore the `/api/chat/transcribe/status` probe here.
 
   const streaming = status === 'streaming';
 
