@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAssistant } from '@/context/AssistantContext';
+import { t } from '@/lib/i18n';
 import { IS_L1_SUPPORT_MODE, IS_LOGIN_ENABLED } from '@/lib/flags';
 import type { Workspace } from '@/lib/types';
 import { WorkspaceList } from './WorkspaceList';
@@ -28,6 +29,7 @@ export function AssistantPanel() {
     close,
     view,
     setView,
+    uiLang,
     product,
     messages,
     status,
@@ -90,7 +92,7 @@ export function AssistantPanel() {
           <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-4 py-3 sm:px-6">
             <div className="flex min-w-0 items-center gap-2">
               <Bot className="h-5 w-5 shrink-0 text-accent-400" />
-              <span className="truncate text-sm font-semibold">Support Tool Assistant</span>
+              <span className="truncate text-sm font-semibold">{t(uiLang, 'panel.title')}</span>
               {product && messages.length > 0 && (
                 <span className="ml-1 shrink-0 whitespace-nowrap rounded-full bg-accent-500/20 px-2 py-0.5 text-xs font-medium text-accent-200 ring-1 ring-inset ring-accent-400/40">
                   {product === 'sales' ? 'Sales' : 'Knowledge Center'}
@@ -116,7 +118,7 @@ export function AssistantPanel() {
                   <button
                     onClick={() => setExportOpen((v) => !v)}
                     className="rounded-md p-2 text-gray-300 hover:bg-white/10 hover:text-white"
-                    aria-label="Export conversation"
+                    aria-label={t(uiLang, 'panel.export')}
                   >
                     <Download className="h-5 w-5" />
                   </button>
@@ -128,7 +130,7 @@ export function AssistantPanel() {
                   onClick={shareConversation}
                   disabled={isSharing}
                   className="rounded-md p-2 text-gray-300 hover:bg-white/10 hover:text-white disabled:opacity-60"
-                  aria-label="Share conversation by email"
+                  aria-label={t(uiLang, 'panel.share')}
                 >
                   <Share2 className="h-5 w-5" />
                 </button>
@@ -136,16 +138,16 @@ export function AssistantPanel() {
               <button
                 onClick={() => setView('tickets')}
                 className="flex items-center gap-1.5 rounded-md px-2 py-2 text-gray-300 hover:bg-white/10 hover:text-white"
-                title="Dashboard — support ticket status"
-                aria-label="Dashboard"
+                title={t(uiLang, 'panel.dashboardTitle')}
+                aria-label={t(uiLang, 'panel.dashboard')}
               >
                 <ClipboardList className="h-5 w-5" />
-                <span className="hidden text-sm font-medium sm:inline">Dashboard</span>
+                <span className="hidden text-sm font-medium sm:inline">{t(uiLang, 'panel.dashboard')}</span>
               </button>
               <button
                 onClick={loadHistory}
                 className="rounded-md p-2 text-gray-300 hover:bg-white/10 hover:text-white"
-                aria-label="Chat history"
+                aria-label={t(uiLang, 'panel.history')}
               >
                 <History className="h-5 w-5" />
               </button>
@@ -153,8 +155,8 @@ export function AssistantPanel() {
                 <button
                   onClick={signOut}
                   className="rounded-md p-2 text-gray-300 hover:bg-white/10 hover:text-white"
-                  title="Sign out"
-                  aria-label="Sign out"
+                  title={t(uiLang, 'panel.signOut')}
+                  aria-label={t(uiLang, 'panel.signOut')}
                 >
                   <LogOut className="h-5 w-5" />
                 </button>
@@ -180,9 +182,9 @@ export function AssistantPanel() {
             <ChatView messages={messages} streaming={streaming} />
           ) : (
             <>
-              <h2 className="text-xl font-bold text-gray-900">How can I help today?</h2>
+              <h2 className="text-xl font-bold text-gray-900">{t(uiLang, 'panel.homeTitle')}</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Choose an area for suggested prompts, or just start typing below.
+                {t(uiLang, 'panel.homeSubtitle')}
               </p>
 
               <div className="my-4 flex items-center gap-2">
@@ -191,14 +193,14 @@ export function AssistantPanel() {
                   className="inline-flex items-center gap-1.5 rounded-md bg-navy-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-navy-800"
                 >
                   <MessageSquarePlus className="h-3.5 w-3.5" />
-                  New Chat
+                  {t(uiLang, 'panel.newChat')}
                 </button>
                 <button
                   onClick={loadHistory}
                   className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
                 >
                   <History className="h-3.5 w-3.5" />
-                  Chat History
+                  {t(uiLang, 'panel.chatHistory')}
                 </button>
               </div>
 
@@ -223,7 +225,7 @@ export function AssistantPanel() {
                     streaming ? 'animate-pulse bg-accent-500' : 'bg-emerald-500'
                   }`}
                 />
-                {streaming ? 'Responding…' : 'Ready'}
+                {streaming ? t(uiLang, 'panel.responding') : t(uiLang, 'panel.ready')}
               </span>
               {view === 'chat' && (
                 <button
@@ -231,13 +233,13 @@ export function AssistantPanel() {
                   className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
                 >
                   <MessageSquarePlus className="h-4 w-4" />
-                  New Chat
+                  {t(uiLang, 'panel.newChat')}
                 </button>
               )}
             </div>
             <ChatInput />
             <p className="px-4 pb-2 text-center text-[11px] text-gray-400">
-              the support tool can make mistakes — verify policy details before client use.
+              {t(uiLang, 'panel.disclaimer')}
             </p>
           </div>
         )}

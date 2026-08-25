@@ -24,6 +24,7 @@ import type {
   TicketSort,
 } from '@/lib/types';
 import { IS_L1_SUPPORT_MODE } from '@/lib/flags';
+import type { Lang } from '@/lib/i18n';
 
 type AssistantStatus = 'ready' | 'streaming' | 'error';
 export type AssistantView = 'home' | 'chat' | 'history' | 'tickets';
@@ -43,6 +44,11 @@ interface AssistantContextValue {
 
   view: AssistantView;
   setView: (view: AssistantView) => void;
+
+  /** UI chrome language for the widget (EN/ES). Single source of truth; the
+   * forced reply language sent with each turn mirrors it. */
+  uiLang: Lang;
+  setUiLang: (lang: Lang) => void;
 
   product: ProductSelection | null;
   setProduct: (product: ProductSelection | null) => void;
@@ -129,6 +135,9 @@ const nextId = () => `m_${Date.now()}_${idCounter++}`;
  */
 const THREAD_PRODUCT_KEY = 'assistant:threadProduct';
 
+/** localStorage key for the persisted UI chrome language (EN/ES). */
+const UI_LANG_KEY = 'assistant_ui_lang';
+
 function loadThreadProduct(threadId: string | null): ProductSelection | null {
   if (typeof window === 'undefined' || !threadId) return null;
   try {
@@ -200,6 +209,29 @@ function downloadBlob(blob: Blob, filename: string) {
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(true);
   const [view, setView] = useState<AssistantView>('home');
+
+  // UI chrome language (EN/ES). Defaults from navigator.language, persisted to
+  // localStorage and read back on init (SSR-safe: navigator/localStorage are
+  // only touched on the client). Complements the backend's message auto-detect.
+  const [uiLang, setUiLangState] = useState<Lang>(() => {
+    if (typeof window === 'undefined') return 'en';
+    try {
+      const saved = window.localStorage.getItem(UI_LANG_KEY);
+      if (saved === 'en' || saved === 'es') return saved;
+    } catch {
+      /* storage unavailable — fall through to locale */
+    }
+    return navigator.language?.toLowerCase().startsWith('es') ? 'es' : 'en';
+  });
+  const setUiLang = useCallback((lang: Lang) => {
+    setUiLangState(lang);
+    try {
+      window.localStorage.setItem(UI_LANG_KEY, lang);
+    } catch {
+      /* storage unavailable — held in memory for this session */
+    }
+  }, []);
+
   const [product, setProduct] = useState<ProductSelection | null>(null);
   const [availableTenants, setAvailableTenants] = useState<TenantOption[]>([]);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -656,6 +688,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
           message: trimmed,
           threadId: threadIdRef.current,
           product,
+          // Force the reply language to match the UI toggle.
+          replyLanguage: uiLang,
           onToken: appendToAssistant,
           onNode: setActiveNode,
           onProgress: (step) => {
@@ -707,7 +741,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         setActiveNode(null);
       }
     },
-    [status, product, refreshTicketBoardSilently],
+    [status, product, uiLang, refreshTicketBoardSilently],
   );
 
   const value = useMemo<AssistantContextValue>(
@@ -718,6 +752,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       toggle,
       view,
       setView,
+      uiLang,
+      setUiLang,
       product,
       setProduct,
       availableTenants,
@@ -779,6 +815,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       close,
       toggle,
       view,
+      uiLang,
+      setUiLang,
       product,
       availableTenants,
       sessionExpired,

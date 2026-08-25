@@ -47,6 +47,9 @@ export interface StreamChatOptions {
   currentPage?: string | null;
   /** Mandatory product context: 'sales' or 'knowledge_center'. */
   product?: string | null;
+  /** Forced reply language (e.g. 'en' / 'es'); mirrors the UI toggle. Omitted
+   * from the request body when falsy so the backend keeps auto-detecting. */
+  replyLanguage?: string;
   signal?: AbortSignal;
   /** Called for each streamed text token. */
   onToken?: (content: string) => void;
@@ -150,6 +153,7 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
     threadId,
     currentPage = null,
     product = null,
+    replyLanguage,
     signal,
     onToken,
     onNode,
@@ -175,6 +179,9 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
       message,
       current_page: currentPage,
       thread_id: threadId,
+      // Forced reply language override — only sent when set, so an unset toggle
+      // leaves the backend's message-text auto-detection untouched.
+      ...(replyLanguage ? { reply_language: replyLanguage } : {}),
     }),
     signal,
   });
