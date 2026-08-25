@@ -108,8 +108,17 @@ function isEdgeBrowser(): boolean {
 }
 
 export function ChatInput() {
-  const { draft, setDraft, sendMessage, status, product, setProduct, availableTenants, messages } =
-    useAssistant();
+  const {
+    draft,
+    setDraft,
+    sendMessage,
+    status,
+    product,
+    setProduct,
+    availableTenants,
+    sessionExpired,
+    messages,
+  } = useAssistant();
   // The product (Sales / Knowledge Center) may only be chosen at the start of a
   // conversation. Once the first message is sent it is locked for the thread;
   // starting a new chat (or resuming a session with no saved product) allows
@@ -572,6 +581,20 @@ export function ChatInput() {
 
   return (
     <div className="border-t border-gray-200 bg-white p-3">
+      {sessionExpired && (
+        <div
+          role="alert"
+          className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+        >
+          <span>Session expired — reload to sign in.</span>
+          <a
+            href="/login"
+            className="shrink-0 rounded-md bg-rose-600 px-2 py-1 text-xs font-medium text-white hover:bg-rose-700"
+          >
+            Sign in
+          </a>
+        </div>
+      )}
       <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-accent-400 focus-within:ring-1 focus-within:ring-accent-400">
         <textarea
           ref={textareaRef}
