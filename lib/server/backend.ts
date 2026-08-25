@@ -1,13 +1,17 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { ACCESS_COOKIE, readCookie } from '@/lib/server/auth';
 
 /**
  * Server-only helpers for talking to the platform backend.
  *
  * The bearer token is never exposed to the browser. It is resolved on the
  * server from (in priority order):
- *   1. PLATFORM_BEARER_TOKEN / NEXT_PUBLIC_DEV_TOKEN env var, or
- *   2. the repo-root `.env` file one directory up (single source of truth).
+ *   1. the signed-in user's session cookie (real login flow), or
+ *   2. PLATFORM_BEARER_TOKEN / NEXT_PUBLIC_DEV_TOKEN env var, or
+ *   3. the repo-root `.env` file one directory up (single source of truth).
+ * When login is enabled the request always carries a session cookie (middleware
+ * guarantees it); the env fallbacks keep the login-disabled dev flow working.
  */
 
 export function getBackendBase(): string {
@@ -53,7 +57,9 @@ function readTokenFromBackendEnv(): string {
   return '';
 }
 
-export function getBearerToken(): string {
+export function getBearerToken(req?: Request): string {
+  const fromCookie = readCookie(req, ACCESS_COOKIE);
+  if (fromCookie) return fromCookie;
   const fromEnv = process.env.PLATFORM_BEARER_TOKEN ?? process.env.NEXT_PUBLIC_DEV_TOKEN;
   if (fromEnv && fromEnv.trim()) return fromEnv.trim();
   return readTokenFromBackendEnv();
@@ -131,7 +137,7 @@ export function authHeaders(
   product?: string | null,
   req?: Request,
 ): Record<string, string> {
-  const token = getBearerToken();
+  const token = getBearerToken(req);
   const support = req
     ? supportHeaders(req.headers.get('x-support-name'), req.headers.get('x-support-email'))
     : {};

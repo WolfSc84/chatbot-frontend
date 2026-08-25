@@ -6,13 +6,14 @@ import {
   ClipboardList,
   Download,
   History,
+  LogOut,
   MessageSquarePlus,
   Share2,
   UserRound,
   X,
 } from 'lucide-react';
 import { useAssistant } from '@/context/AssistantContext';
-import { IS_L1_SUPPORT_MODE } from '@/lib/flags';
+import { IS_L1_SUPPORT_MODE, IS_LOGIN_ENABLED } from '@/lib/flags';
 import type { Workspace } from '@/lib/types';
 import { WorkspaceList } from './WorkspaceList';
 import { ChatView } from './ChatView';
@@ -47,6 +48,15 @@ export function AssistantPanel() {
   } = useAssistant();
 
   const [exportOpen, setExportOpen] = useState(false);
+
+  const signOut = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      // Full navigation so middleware re-evaluates the (now cleared) session.
+      window.location.href = '/login';
+    }
+  };
 
   const streaming = status === 'streaming';
   const showInput = view !== 'history' && view !== 'tickets';
@@ -139,6 +149,16 @@ export function AssistantPanel() {
               >
                 <History className="h-5 w-5" />
               </button>
+              {IS_LOGIN_ENABLED && (
+                <button
+                  onClick={signOut}
+                  className="rounded-md p-2 text-gray-300 hover:bg-white/10 hover:text-white"
+                  title="Sign out"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="h-5 w-5" />
+                </button>
+              )}
             </div>
           </div>
         </div>

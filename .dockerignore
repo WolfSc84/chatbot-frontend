@@ -1,0 +1,23 @@
+# Keep the build context small and correct. Without this, `COPY . .` in the
+# Dockerfile drags the host node_modules (built for the host OS/arch, not the
+# Alpine builder) over the `npm ci` result and copies the stale local build —
+# a cross-arch/staleness hazard and a >750 MB context.
+#
+# NOTE: .env is deliberately NOT ignored. It is a committed, secret-free template
+# (secrets are injected server-side at runtime), and Next.js reads it at build to
+# inline NEXT_PUBLIC_* flags into the standalone bundle. Local-only overrides
+# (.env.local) are excluded below.
+
+node_modules/
+.next/
+.git/
+.gitignore
+
+# Local, git-ignored env overrides (may hold developer-specific values).
+.env.local
+.env.*.local
+
+# Logs and misc
+*.log
+npm-debug.log*
+.DS_Store
