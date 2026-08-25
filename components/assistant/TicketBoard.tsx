@@ -4,7 +4,6 @@ import { useEffect, useMemo } from 'react';
 import { ChevronLeft, FileJson, Ticket, UserRound } from 'lucide-react';
 import { useAssistant } from '@/context/AssistantContext';
 import type { StatCardData, TicketItem } from '@/lib/types';
-import { DEMO_TICKET_BOARD } from '@/lib/mockTickets';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { RawTicketModal } from './RawTicketModal';
 
@@ -52,16 +51,8 @@ export function TicketBoard({ onBack }: { onBack: () => void }) {
     return () => clearTimeout(timer);
   }, [loadTickets]);
 
-  // No live tickets yet (SysAid credentials not wired up, or nothing filed for
-  // this demo tenant) — show sample data instead of an empty panel. Switches
-  // back to live data automatically the moment the backend returns tickets.
-  const usingDemoData = !ticketsLoading && (ticketBoard?.counts.total ?? 0) === 0;
-  const effectiveBoard = usingDemoData ? DEMO_TICKET_BOARD : ticketBoard;
-
-  const openTickets: TicketItem[] = effectiveBoard?.board.open ?? [];
-  const counts = effectiveBoard?.counts;
-  const selected =
-    effectiveBoard?.tickets.find((t) => t.local_id === selectedTicketId) ?? null;
+  const openTickets: TicketItem[] = ticketBoard?.board.open ?? [];
+  const counts = ticketBoard?.counts;
   const showRaw = rawTicketLoading || rawTicket !== null;
 
   const stats: StatCardData[] = useMemo(
@@ -124,12 +115,6 @@ export function TicketBoard({ onBack }: { onBack: () => void }) {
         </select>
       </div>
 
-      {usingDemoData && (
-        <span className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-          Demo Data
-        </span>
-      )}
-
       <div className="grid grid-cols-3 gap-2">
         {stats.map((stat) => (
           <StatCard key={stat.id} data={stat} />
@@ -147,11 +132,9 @@ export function TicketBoard({ onBack }: { onBack: () => void }) {
         <p className="py-10 text-center text-sm text-gray-400">Loading tickets…</p>
       )}
 
-      {usingDemoData && !ticketsLoading && (
+      {ticketsError && !ticketsLoading && (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
-          {ticketsError
-            ? `Could not reach the live ticket service (${ticketsError}). Showing sample tickets instead.`
-            : 'No live tickets yet — showing sample tickets so you can preview the dashboard.'}
+          Could not reach the ticket service ({ticketsError}).
         </p>
       )}
 
@@ -227,10 +210,8 @@ export function TicketBoard({ onBack }: { onBack: () => void }) {
                     <dd className="text-gray-700">{formatDate(ticket.created_at) || '—'}</dd>
                   </dl>
                   <button
-                    onClick={() => (usingDemoData ? undefined : loadRawTicket(ticket.local_id))}
-                    disabled={usingDemoData}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    title={usingDemoData ? 'Raw JSON is unavailable for sample tickets' : undefined}
+                    onClick={() => loadRawTicket(ticket.local_id)}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
                   >
                     <FileJson className="h-3.5 w-3.5" />
                     View Raw JSON
