@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Mic, SendHorizontal, SpellCheck, Square } from 'lucide-react';
 import { transcribeAudio, correctTranscript } from '@/lib/api';
 import { useAssistant, type ProductSelection } from '@/context/AssistantContext';
+import { t } from '@/lib/i18n';
 
 const GRAMMAR_CHECK_STORAGE_KEY = 'platform:grammarCheckEnabled';
 
@@ -118,6 +119,8 @@ export function ChatInput() {
     availableTenants,
     sessionExpired,
     messages,
+    uiLang,
+    setUiLang,
   } = useAssistant();
   // The product (Sales / Knowledge Center) may only be chosen at the start of a
   // conversation. Once the first message is sent it is locked for the thread;
@@ -438,7 +441,7 @@ export function ChatInput() {
 
       const transcript = finalTranscript.trim();
       if (!transcript) {
-        setVoiceInfo('No speech detected — click mic to try again.');
+        setVoiceInfo(t(uiLang, 'input.voiceNoSpeech'));
         return;
       }
 
@@ -455,7 +458,7 @@ export function ChatInput() {
 
     speechRecognitionRef.current = recognition;
     setIsRecording(true);
-    setVoiceInfo('Browser recognition active — speak now.');
+    setVoiceInfo(t(uiLang, 'input.voiceActive'));
     recognition.start();
   };
 
@@ -606,12 +609,12 @@ export function ChatInput() {
           role="alert"
           className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700"
         >
-          <span>Session expired — reload to sign in.</span>
+          <span>{t(uiLang, 'input.sessionExpired')}</span>
           <a
             href="/login"
             className="shrink-0 rounded-md bg-rose-600 px-2 py-1 text-xs font-medium text-white hover:bg-rose-700"
           >
-            Sign in
+            {t(uiLang, 'input.signIn')}
           </a>
         </div>
       )}
@@ -622,28 +625,28 @@ export function ChatInput() {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={1}
-          placeholder="Ask the assistant anything..."
+          placeholder={t(uiLang, 'input.placeholder')}
           className="block max-h-32 w-full min-w-0 resize-none overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
         />
         <div className="flex w-full flex-wrap items-center justify-end gap-2">
           {!productLocked && (
             <>
               <label className="sr-only" htmlFor="product-selection">
-                Product (required)
+                {t(uiLang, 'input.product')}
               </label>
               <select
                 id="product-selection"
                 value={product ?? ''}
                 onChange={(e) => setProduct((e.target.value || null) as ProductSelection | null)}
                 disabled={streaming || isRecording || isTranscribing || isCorrecting}
-                aria-label="Product (required)"
-                title="Select tenant"
+                aria-label={t(uiLang, 'input.product')}
+                title={t(uiLang, 'input.selectTenant')}
                 className={`h-8 shrink-0 rounded-lg border bg-white px-2 text-xs font-medium outline-none transition-colors hover:border-accent-400 focus:border-accent-400 disabled:cursor-not-allowed disabled:opacity-40 ${
                   product ? 'border-gray-200 text-gray-700' : 'border-rose-300 text-gray-500'
                 }`}
               >
                 <option value="" disabled>
-                  Select tenant…
+                  {t(uiLang, 'input.selectTenantOption')}
                 </option>
                 {availableTenants.map((opt) => (
                   <option key={opt.id} value={opt.id}>
@@ -658,8 +661,8 @@ export function ChatInput() {
           onClick={toggleGrammarCheck}
           disabled={isCorrecting}
           aria-pressed={grammarCheckEnabled}
-          aria-label={grammarCheckEnabled ? 'Disable grammar check' : 'Enable grammar check'}
-          title={grammarCheckEnabled ? 'Grammar check: on (click to disable)' : 'Grammar check: off (click to enable)'}
+          aria-label={t(uiLang, grammarCheckEnabled ? 'input.grammarDisable' : 'input.grammarEnable')}
+          title={t(uiLang, grammarCheckEnabled ? 'input.grammarOnTitle' : 'input.grammarOffTitle')}
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
             grammarCheckEnabled
               ? 'border-accent-400 bg-accent-50 text-accent-600'
@@ -671,8 +674,8 @@ export function ChatInput() {
         <button
           onClick={isRecording ? stopRecording : () => void startRecording()}
           disabled={streaming || isTranscribing || isCorrecting}
-          aria-label={isRecording ? 'Stop voice recording' : 'Start voice recording'}
-          title={isRecording ? 'Stop recording' : 'Start voice input'}
+          aria-label={t(uiLang, isRecording ? 'input.voiceStop' : 'input.voiceStart')}
+          title={t(uiLang, isRecording ? 'input.voiceStopTitle' : 'input.voiceStartTitle')}
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
             isRecording
               ? 'animate-pulse border-accent-400 bg-accent-50 text-accent-600'
@@ -681,8 +684,22 @@ export function ChatInput() {
         >
           {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            const next = uiLang === 'en' ? 'es' : 'en';
+            setUiLang(next);
+            // Keep voice-input language aligned with the UI language toggle.
+            setVoiceLang(next === 'es' ? 'es-US' : 'en-US');
+          }}
+          aria-label={t(uiLang, 'input.uiLang')}
+          title={t(uiLang, 'input.uiLang')}
+          className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white px-2 text-xs font-medium text-gray-600 outline-none transition-colors hover:border-accent-400 hover:text-accent-700 focus:border-accent-400"
+        >
+          {uiLang === 'en' ? 'EN' : 'ES'}
+        </button>
         <label className="sr-only" htmlFor="voice-language">
-          Voice input language
+          {t(uiLang, 'input.voiceLang')}
         </label>
         <select
           id="voice-language"
@@ -690,8 +707,8 @@ export function ChatInput() {
           onChange={(e) => setVoiceLang(e.target.value as 'en-US' | 'es-US')}
           disabled={isRecording || isTranscribing || isCorrecting || streaming}
           className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-600 outline-none transition-colors hover:border-accent-400 focus:border-accent-400 disabled:cursor-not-allowed disabled:opacity-40"
-          title="Voice input language"
-          aria-label="Voice input language"
+          title={t(uiLang, 'input.voiceLang')}
+          aria-label={t(uiLang, 'input.voiceLang')}
         >
           <option value="en-US">English</option>
           <option value="es-US">Español</option>
@@ -699,7 +716,7 @@ export function ChatInput() {
         <button
           onClick={() => void submit()}
           disabled={!draft.trim() || !product || streaming || isRecording || isTranscribing || isCorrecting}
-          aria-label="Send message"
+          aria-label={t(uiLang, 'input.send')}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-500 text-white transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <SendHorizontal className="h-4 w-4" />
@@ -713,12 +730,12 @@ export function ChatInput() {
             {voiceError ??
               voiceInfo ??
               (isCorrecting
-                ? 'Correcting grammar…'
+                ? t(uiLang, 'input.statusCorrecting')
                 : isRecording
                   ? preferBrowserStt
-                    ? 'Listening… click stop when done.'
-                    : 'Recording… click stop when done.'
-                  : 'Transcribing…')}
+                    ? t(uiLang, 'input.statusListening')
+                    : t(uiLang, 'input.statusRecording')
+                  : t(uiLang, 'input.statusTranscribing'))}
           </span>
         </div>
       )}

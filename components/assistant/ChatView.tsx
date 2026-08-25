@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { Bot, Loader2, Pause, Volume2 } from 'lucide-react';
 import { useAssistant } from '@/context/AssistantContext';
+import { t, type Lang } from '@/lib/i18n';
 import type { ChatMessage } from '@/lib/types';
 import { MarkdownMessage } from './MarkdownMessage';
 
@@ -12,9 +13,9 @@ interface ChatViewProps {
 }
 
 /** Animated dots shown while waiting for the assistant's response to begin. */
-function TypingIndicator() {
+function TypingIndicator({ lang }: { lang: Lang }) {
   return (
-    <span className="inline-flex items-center gap-1" aria-label="Assistant is responding" role="status">
+    <span className="inline-flex items-center gap-1" aria-label={t(lang, 'chat.typing')} role="status">
       <span className="h-2 w-2 animate-bounce rounded-full bg-accent-500 [animation-delay:-0.3s]" />
       <span className="h-2 w-2 animate-bounce rounded-full bg-accent-500 [animation-delay:-0.15s]" />
       <span className="h-2 w-2 animate-bounce rounded-full bg-accent-500" />
@@ -25,6 +26,7 @@ function TypingIndicator() {
 export function ChatView({ messages, streaming }: ChatViewProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const {
+    uiLang,
     playingMessageId,
     audioLoadingId,
     audioError,
@@ -80,7 +82,7 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                     {showCursor && <span className="accent-blink mt-0.5">▋</span>}
                   </div>
                 ) : showCursor ? (
-                  <TypingIndicator />
+                  <TypingIndicator lang={uiLang} />
                 ) : (
                   '\u00A0'
                 )}
@@ -91,8 +93,8 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                   <button
                     onClick={() => playMessageAudio(msg.id, msg.content)}
                     disabled={isLoadingAudio}
-                    aria-label={isPlaying ? 'Stop audio' : 'Listen'}
-                    title={isPlaying ? 'Stop audio' : 'Listen'}
+                    aria-label={t(uiLang, isPlaying ? 'chat.stopAudio' : 'chat.listen')}
+                    title={t(uiLang, isPlaying ? 'chat.stopAudio' : 'chat.listen')}
                     className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
                       isPlaying
                         ? 'border-accent-200 bg-accent-50 text-accent-600 hover:bg-accent-100'
@@ -102,23 +104,23 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                     {isLoadingAudio ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Loading…</span>
+                        <span>{t(uiLang, 'chat.loading')}</span>
                       </>
                     ) : isPlaying ? (
                       <>
                         <span className="accent-blink inline-flex items-center gap-1.5">
                           <span className="h-2 w-2 rounded-full bg-accent-500" />
-                          Playing…
+                          {t(uiLang, 'chat.playing')}
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-full bg-accent-500 px-2 py-0.5 text-white">
                           <Pause className="h-3.5 w-3.5" />
-                          Stop
+                          {t(uiLang, 'chat.stop')}
                         </span>
                       </>
                     ) : (
                       <>
                         <Volume2 className="h-4 w-4" />
-                        <span>Listen</span>
+                        <span>{t(uiLang, 'chat.listen')}</span>
                       </>
                     )}
                   </button>
