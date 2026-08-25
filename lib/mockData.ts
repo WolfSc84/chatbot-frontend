@@ -115,18 +115,6 @@ export const WORKSPACES: Workspace[] = [
     icon: 'LineChart',
     prompt: 'What are the current market conditions and carrier appetite for the credit union segment?',
   },
-  {
-    id: 'knowledge-center',
-    title: 'Knowledge Center',
-    description: 'Coverage definitions, policy language & agency guidelines.',
-    icon: 'BookOpen',
-    prompt: 'Explain the difference between occurrence and claims-made coverage.',
-  },
-  {
-    id: 'task-manager',
-    title: 'Task Manager',
-    description: 'Create follow-ups, reminders, checklists & tracked items.',
-    icon: 'ClipboardList',
-    prompt: 'Create a follow-up task to call Acme Corporation about their upcoming renewal.',
-  },
+  // Knowledge Center is its own tenant (not a Sales workspace) and Task Manager's
+  // subagent was removed (decision D1) — both intentionally omitted from the Sales menu.
 ];
