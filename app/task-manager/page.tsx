@@ -12,7 +12,6 @@ import {
 import { StatCard } from '@/components/dashboard/StatCard';
 import { RawTicketModal } from '@/components/assistant/RawTicketModal';
 import { getRawTicket, getTicketBoard } from '@/lib/api';
-import { DEMO_TICKET_BOARD } from '@/lib/mockTickets';
 import type { StatCardData, TicketBoardResponse, TicketItem, TicketSort } from '@/lib/types';
 
 const AUTO_REFRESH_MS = 30_000;
@@ -55,7 +54,6 @@ export default function TaskManagerPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usingDemoData, setUsingDemoData] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<TicketSort>('newest');
   const [statusTab, setStatusTab] = useState<StatusTab>('all');
@@ -74,22 +72,11 @@ export default function TaskManagerPage() {
     setError(null);
     try {
       const data = await getTicketBoard(search.trim(), sort);
-      // No real tickets yet (e.g. SysAid credentials not wired up, or nothing
-      // filed for this demo tenant) — show sample data instead of an empty page.
-      // This automatically stops the moment the live backend returns tickets.
-      if (data.counts.total === 0 && !search.trim()) {
-        setBoard(DEMO_TICKET_BOARD);
-        setUsingDemoData(true);
-      } else {
-        setBoard(data);
-        setUsingDemoData(false);
-      }
+      setBoard(data);
       setLastUpdated(new Date());
     } catch (err) {
-      // Backend/SysAid connection isn't available — fall back to sample data
-      // rather than showing a broken dashboard.
-      setBoard(DEMO_TICKET_BOARD);
-      setUsingDemoData(true);
+      // Leave any previously-loaded board in place so a transient refresh
+      // failure doesn't wipe the table; surface the error banner instead.
       setError(err instanceof Error ? err.message : 'Could not load tickets.');
     } finally {
       setLoading(false);
@@ -178,16 +165,9 @@ export default function TaskManagerPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-gray-900">Task Manager</h1>
-            {usingDemoData && (
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-                Demo Data
-              </span>
-            )}
           </div>
           <p className="mt-1 text-sm text-gray-500">
-            {usingDemoData
-              ? 'Showing sample tickets — live SysAid ticket status will appear here automatically once credentials are configured.'
-              : 'Live view of support tickets filed through the AI assistant.'}
+            Live view of support tickets filed through the AI assistant.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -258,12 +238,10 @@ export default function TaskManagerPage() {
           <p className="py-16 text-center text-sm text-gray-400">Loading tickets…</p>
         )}
 
-        {usingDemoData && !loading && (
+        {error && !loading && (
           <div className="mx-5 my-4 flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            {error
-              ? `Could not reach the live ticket service (${error}). Showing sample tickets instead.`
-              : 'No live tickets yet — showing sample tickets so you can preview the dashboard.'}
+            Could not reach the ticket service ({error}).
           </div>
         )}
 
