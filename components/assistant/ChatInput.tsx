@@ -145,7 +145,14 @@ export function ChatInput() {
   const [isCorrecting, setIsCorrecting] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceInfo, setVoiceInfo] = useState<string | null>(null);
-  const [sensitivity, setSensitivity] = useState<SensitivityProfile>('medium');
+  // Speech-recognition language (BCP-47). Drives recognition.lang so voice
+  // input works in Spanish (Puerto Rico client) as well as English. Defaults to
+  // the browser locale; SSR-safe (navigator is undefined on the server).
+  const [voiceLang, setVoiceLang] = useState<'en-US' | 'es-US'>(() =>
+    typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('es')
+      ? 'es-US'
+      : 'en-US',
+  );
   // Start with true so mic works immediately; flipped to false when the backend
   // reports a reachable server-side STT model (env-driven; see STT_MODEL).
   const [preferBrowserStt, setPreferBrowserStt] = useState(true);
@@ -244,7 +251,7 @@ export function ChatInput() {
       const ctx = new AudioCtx();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 32; // small = fast
-      analyser.smoothingTimeConstant = VISUALIZER_TUNING[sensitivity].smoothingTimeConstant;
+      analyser.smoothingTimeConstant = VISUALIZER_TUNING.medium.smoothingTimeConstant;
       ctx.createMediaStreamSource(stream).connect(analyser);
       audioCtxRef.current = ctx;
       analyserRef.current = analyser;
@@ -264,7 +271,7 @@ export function ChatInput() {
           gain: GAIN,
           riseAlpha: RISE_ALPHA,
           fallAlpha: FALL_ALPHA,
-        } = VISUALIZER_TUNING[sensitivity];
+        } = VISUALIZER_TUNING.medium;
         const step = Math.floor(data.length / NUM_BARS);
         const bars = Array.from({ length: NUM_BARS }, (_, i) => {
           const slice = data.slice(i * step, (i + 1) * step);
@@ -340,7 +347,7 @@ export function ChatInput() {
     // capturing full sentences without cutting off mid-speech.
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    recognition.lang = voiceLang;
 
     // Browser STT doesn't expose its internal audio stream, so open a parallel
     // monitor stream purely for live visualisation.
@@ -669,21 +676,20 @@ export function ChatInput() {
         >
           {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </button>
-        <label className="sr-only" htmlFor="voice-visualizer-sensitivity">
-          Voice visualizer sensitivity
+        <label className="sr-only" htmlFor="voice-language">
+          Voice input language
         </label>
         <select
-          id="voice-visualizer-sensitivity"
-          value={sensitivity}
-          onChange={(e) => setSensitivity(e.target.value as SensitivityProfile)}
+          id="voice-language"
+          value={voiceLang}
+          onChange={(e) => setVoiceLang(e.target.value as 'en-US' | 'es-US')}
           disabled={isRecording || isTranscribing || isCorrecting || streaming}
           className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-600 outline-none transition-colors hover:border-accent-400 focus:border-accent-400 disabled:cursor-not-allowed disabled:opacity-40"
-          title="Visualizer sensitivity"
-          aria-label="Visualizer sensitivity"
+          title="Voice input language"
+          aria-label="Voice input language"
         >
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
+          <option value="en-US">English</option>
+          <option value="es-US">Español</option>
         </select>
         <button
           onClick={() => void submit()}
