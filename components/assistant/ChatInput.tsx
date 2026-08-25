@@ -516,7 +516,12 @@ export function ChatInput() {
 
         setIsTranscribing(true);
         try {
-          const transcript = await transcribeAudio(audioBlob, `voice-input.${extension}`, 'en', product);
+          const transcript = await transcribeAudio(
+            audioBlob,
+            `voice-input.${extension}`,
+            voiceLang.slice(0, 2), // BCP-47 (es-US) → ISO-639-1 (es) for the STT model
+            product,
+          );
           if (!transcript) {
             setVoiceError('No speech was detected. Please try again.');
             return;
