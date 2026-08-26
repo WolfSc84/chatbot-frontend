@@ -8,17 +8,20 @@ import {
   getSessionMessages,
   getTenants,
   SessionExpiredError,
+  downloadReport,
   getTicketBoard,
   listAllTenantSessions,
   streamChat,
   synthesizeAudio,
   tenantOfSessionId,
+  uploadFile,
   type TenantOption,
 } from '@/lib/api';
 import type {
   AgentProgressStep,
   ChatMessage,
   ExportFormat,
+  ReportAttachment,
   SessionInfo,
   TicketBoardResponse,
   TicketSort,
@@ -80,6 +83,10 @@ interface AssistantContextValue {
   removeSession: (sessionId: string) => Promise<void>;
 
   sendMessage: (text: string) => Promise<void>;
+  /** Sales-only: attach a file to the current conversation as session context. */
+  attachFile: (file: File) => Promise<{ filename: string; chars: number }>;
+  /** Sales-only: download a generated report in the given format. */
+  saveReport: (report: ReportAttachment, format: 'pdf' | 'xlsx' | 'docx') => Promise<void>;
   newChat: () => void;
 
   // Audio playback
@@ -701,16 +708,18 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
               return next;
             });
           },
-          onComplete: ({ response, threadId, ticketClosed }) => {
+          onComplete: ({ response, threadId, ticketClosed, report }) => {
             threadIdRef.current = threadId;
             // Persist the product for this thread so it survives reloads and is
             // restored (and re-sent) when the session is reopened.
             saveThreadProduct(threadId, product);
-            if (response) {
+            if (response || report) {
               setMessages((prev) => {
                 const next = [...prev];
                 const last = { ...next[next.length - 1] };
                 if (!last.content) last.content = response;
+                // Attach the generated report (Sales-only) so the bubble can offer a download.
+                if (report) last.report = report;
                 next[next.length - 1] = last;
                 return next;
               });
@@ -742,6 +751,31 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       }
     },
     [status, product, uiLang, refreshTicketBoardSilently],
+  );
+
+  // Sales-only: attach a file to the current conversation. Rides the current thread
+  // (server mints one when absent); we store the returned id so the next turn resumes
+  // the SAME thread the file was scoped to, then persist the product for it.
+  const attachFile = useCallback(
+    async (file: File) => {
+      if (!product) throw new Error('Select a workspace before attaching a file.');
+      const result = await uploadFile(file, product, threadIdRef.current);
+      if (result.threadId) {
+        threadIdRef.current = result.threadId;
+        saveThreadProduct(result.threadId, product);
+      }
+      return { filename: result.filename, chars: result.chars };
+    },
+    [product],
+  );
+
+  // Sales-only: render a generated report to a file and trigger a browser download.
+  const saveReport = useCallback(
+    async (report: ReportAttachment, format: 'pdf' | 'xlsx' | 'docx') => {
+      const { blob, filename } = await downloadReport(report, format, product);
+      downloadBlob(blob, filename);
+    },
+    [product],
   );
 
   const value = useMemo<AssistantContextValue>(
@@ -776,6 +810,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       openSession,
       removeSession,
       sendMessage,
+      attachFile,
+      saveReport,
       newChat,
       playingMessageId,
       audioLoadingId,
@@ -837,6 +873,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       openSession,
       removeSession,
       sendMessage,
+      attachFile,
+      saveReport,
       newChat,
       playingMessageId,
       audioLoadingId,

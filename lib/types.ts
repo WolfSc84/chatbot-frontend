@@ -14,11 +14,20 @@ export interface AgentProgressStep {
   timestamp?: string;
 }
 
+export interface ReportAttachment {
+  title: string;
+  subtitle?: string;
+  filename?: string;
+  sections: { heading: string; body?: string; bullets?: string[] }[];
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
   content: string;
   executionTimeline?: AgentProgressStep[];
+  /** Downloadable report generated this turn (Sales-only). */
+  report?: ReportAttachment | null;
 }
 
 export interface SessionInfo {

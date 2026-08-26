@@ -18,6 +18,8 @@ import { IS_L1_SUPPORT_MODE } from './flags';
 const CHAT_STREAM_URL = '/api/chat/stream';
 const CHAT_AUDIO_URL = '/api/chat/audio';
 const CHAT_TRANSCRIBE_URL = '/api/chat/transcribe';
+const CHAT_ATTACH_URL = '/api/chat/attach';
+const CHAT_REPORT_URL = '/api/chat/report';
 const CHAT_TRANSCRIBE_CORRECT_URL = '/api/chat/transcribe/correct';
 const CHAT_EXPORT_SUMMARY_URL = '/api/chat/export-summary';
 const SESSIONS_URL = '/api/sessions';
@@ -34,10 +36,21 @@ export interface AudioSynthesisOptions {
   volume?: string;
 }
 
+/** Structured report payload emitted by the Sales-exclusive report subagent,
+ * carried in the `complete` event's actions. Downloaded via {@link downloadReport}. */
+export interface ReportPayload {
+  title: string;
+  subtitle?: string;
+  filename?: string;
+  sections: { heading: string; body?: string; bullets?: string[] }[];
+}
+
 export interface StreamCompletePayload {
   response: string;
   threadId: string | null;
   ticketClosed?: boolean;
+  /** Present when a report was generated this turn (Sales-only). */
+  report?: ReportPayload | null;
   executionTimeline: AgentProgressStep[];
 }
 
@@ -66,6 +79,18 @@ export interface StreamChatOptions {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null;
   return value as Record<string, unknown>;
+}
+
+/** Pull the structured report out of the complete-event `actions` array, if any. */
+function extractReport(actions: unknown): ReportPayload | null {
+  if (!Array.isArray(actions)) return null;
+  for (const action of actions) {
+    const rec = asRecord(action);
+    if (rec?.type === 'report' && rec.report && typeof rec.report === 'object') {
+      return rec.report as ReportPayload;
+    }
+  }
+  return null;
 }
 
 /**
@@ -253,6 +278,7 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
             response: text ?? '',
             threadId: (data.thread_id as string) ?? threadId,
             ticketClosed: data.ticket_closed === true,
+            report: extractReport(data.actions),
             executionTimeline: finalTimeline,
           });
           break;
@@ -442,6 +468,82 @@ export async function transcribeAudio(
 
   const data = (await response.json()) as { text?: string };
   return (data.text ?? '').trim();
+}
+
+/**
+ * Attach a file to the current conversation as Sales-only session context.
+ * Returns the (possibly server-minted) thread id so the follow-up turn resumes the
+ * same conversation the file rode. Sales-gated server-side (403 for other tenants).
+ */
+export async function uploadFile(
+  file: File,
+  product?: string | null,
+  threadId?: string | null,
+): Promise<{ threadId: string; filename: string; chars: number }> {
+  const formData = new FormData();
+  formData.append('file', file, file.name);
+  if (threadId) formData.append('thread_id', threadId);
+
+  const response = await fetch(CHAT_ATTACH_URL, {
+    method: 'POST',
+    headers: productHeader(product),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const data = (await response.json()) as { error?: string };
+      detail = data.error ?? '';
+    } catch {
+      detail = await response.text().catch(() => '');
+    }
+    throw new Error(detail || `File attachment failed (${response.status}).`);
+  }
+
+  const data = (await response.json()) as {
+    thread_id?: string;
+    filename?: string;
+    chars?: number;
+  };
+  return {
+    threadId: data.thread_id ?? '',
+    filename: data.filename ?? file.name,
+    chars: data.chars ?? 0,
+  };
+}
+
+/**
+ * Render a generated report to a downloadable file (PDF/Excel/Word) via the proxy.
+ * Returns the file Blob plus the server-suggested filename. Sales-gated server-side
+ * (403 for tenants without the `reporting` capability).
+ */
+export async function downloadReport(
+  report: ReportPayload,
+  format: 'pdf' | 'xlsx' | 'docx',
+  product?: string | null,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(CHAT_REPORT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...productHeader(product) },
+    body: JSON.stringify({ report, format }),
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const data = (await response.json()) as { error?: string };
+      detail = data.error ?? '';
+    } catch {
+      detail = await response.text().catch(() => '');
+    }
+    throw new Error(detail || `Report download failed (${response.status}).`);
+  }
+
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  const filename = match?.[1] ?? `${report.filename ?? 'report'}.${format}`;
+  return { blob: await response.blob(), filename };
 }
 
 /**

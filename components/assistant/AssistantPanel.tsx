@@ -31,6 +31,7 @@ export function AssistantPanel() {
     setView,
     uiLang,
     product,
+    availableTenants,
     messages,
     status,
     setDraft,
@@ -95,7 +96,7 @@ export function AssistantPanel() {
               <span className="truncate text-sm font-semibold">{t(uiLang, 'panel.title')}</span>
               {product && messages.length > 0 && (
                 <span className="ml-1 shrink-0 whitespace-nowrap rounded-full bg-accent-500/20 px-2 py-0.5 text-xs font-medium text-accent-200 ring-1 ring-inset ring-accent-400/40">
-                  {product === 'sales' ? 'Sales' : 'Knowledge Center'}
+                  {availableTenants.find((tnt) => tnt.id === product)?.label ?? product}
                 </span>
               )}
             </div>

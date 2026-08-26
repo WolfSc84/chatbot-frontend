@@ -1,11 +1,57 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { Bot, Loader2, Pause, Volume2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Bot, Download, FileSpreadsheet, FileText, Loader2, Pause, Volume2 } from 'lucide-react';
 import { useAssistant } from '@/context/AssistantContext';
 import { t, type Lang } from '@/lib/i18n';
-import type { ChatMessage } from '@/lib/types';
+import type { ChatMessage, ReportAttachment } from '@/lib/types';
 import { MarkdownMessage } from './MarkdownMessage';
+
+/** Sales-only: download buttons for a report generated this turn (PDF/Excel/Word). */
+function ReportDownload({ report, lang }: { report: ReportAttachment; lang: Lang }) {
+  const { saveReport } = useAssistant();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const formats: { key: 'pdf' | 'xlsx' | 'docx'; label: string; Icon: typeof FileText }[] = [
+    { key: 'pdf', label: 'PDF', Icon: FileText },
+    { key: 'xlsx', label: 'Excel', Icon: FileSpreadsheet },
+    { key: 'docx', label: 'Word', Icon: FileText },
+  ];
+
+  const onDownload = async (format: 'pdf' | 'xlsx' | 'docx') => {
+    setError(null);
+    setBusy(format);
+    try {
+      await saveReport(report, format);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t(lang, 'chat.reportFailed'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+        <Download className="h-3.5 w-3.5" />
+        {t(lang, 'chat.downloadReport')}
+      </span>
+      {formats.map(({ key, label, Icon }) => (
+        <button
+          key={key}
+          onClick={() => onDownload(key)}
+          disabled={busy !== null}
+          className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-accent-300 hover:text-accent-600 disabled:opacity-60"
+        >
+          {busy === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+          <span>{label}</span>
+        </button>
+      ))}
+      {error && <span className="text-xs text-rose-500">{error}</span>}
+    </div>
+  );
+}
 
 interface ChatViewProps {
   messages: ChatMessage[];
@@ -128,6 +174,10 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                     <span className="text-xs text-rose-500">{audioError}</span>
                   )}
                 </div>
+              )}
+
+              {!isUser && msg.report && !showCursor && (
+                <ReportDownload report={msg.report} lang={uiLang} />
               )}
             </div>
           </div>
