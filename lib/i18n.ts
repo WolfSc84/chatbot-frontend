@@ -9,7 +9,7 @@ export type Lang = 'en' | 'es';
 
 const STRINGS: Record<string, { en: string; es: string }> = {
   // Panel chrome
-  'panel.title': { en: 'Support Tool Assistant', es: 'Asistente de Soporte' },
+  'panel.title': { en: 'Assistant', es: 'Asistente' },
   'panel.dashboard': { en: 'Dashboard', es: 'Panel' },
   'panel.dashboardTitle': {
     en: 'Dashboard — support ticket status',
