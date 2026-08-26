@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Mic, SendHorizontal, SpellCheck, Square } from 'lucide-react';
+import { Mic, Paperclip, SendHorizontal, SpellCheck, Square } from 'lucide-react';
 import { transcribeAudio, correctTranscript } from '@/lib/api';
 import { useAssistant, type ProductSelection } from '@/context/AssistantContext';
 import { t } from '@/lib/i18n';
@@ -121,6 +121,7 @@ export function ChatInput() {
     messages,
     uiLang,
     setUiLang,
+    attachFile,
   } = useAssistant();
   // The product (Sales / Knowledge Center) may only be chosen at the start of a
   // conversation. Once the first message is sent it is locked for the thread;
@@ -148,6 +149,12 @@ export function ChatInput() {
   const [isCorrecting, setIsCorrecting] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceInfo, setVoiceInfo] = useState<string | null>(null);
+  // Sales-only session file attach. The parsed text rides the current thread as
+  // ephemeral session context (never the tenant corpus); see attachFile in context.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [attachInfo, setAttachInfo] = useState<string | null>(null);
   // Speech-recognition language (BCP-47). Drives recognition.lang so voice
   // input works in Spanish (Puerto Rico client) as well as English. Defaults to
   // the browser locale; SSR-safe (navigator is undefined on the server).
@@ -192,6 +199,20 @@ export function ChatInput() {
   // to re-enable it, restore the `/api/chat/transcribe/status` probe here.
 
   const streaming = status === 'streaming';
+
+  const handleAttach = async (file: File) => {
+    setAttachError(null);
+    setAttachInfo(null);
+    setIsUploading(true);
+    try {
+      const { filename } = await attachFile(file);
+      setAttachInfo(t(uiLang, 'input.attachDone').replace('{name}', filename));
+    } catch (err) {
+      setAttachError(err instanceof Error ? err.message : t(uiLang, 'input.attachFailed'));
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // Auto-grow the textarea to fit its content, capped by the max-h-32 CSS class.
   useLayoutEffect(() => {
@@ -656,6 +677,30 @@ export function ChatInput() {
               </select>
             </>
           )}
+        {product === 'sales' && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleAttach(f);
+                e.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={streaming || isUploading || isRecording || isTranscribing || isCorrecting}
+              aria-label={t(uiLang, 'input.attach')}
+              title={t(uiLang, 'input.attachTitle')}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:border-accent-400 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={toggleGrammarCheck}
@@ -723,19 +768,23 @@ export function ChatInput() {
         </button>
         </div>
       </div>
-      {(voiceError || voiceInfo || isRecording || isTranscribing || isCorrecting) && (
-        <div className={`mt-2 flex items-center gap-2 text-xs ${voiceError ? 'text-red-500' : 'text-gray-400'}`}>
+      {(voiceError || voiceInfo || attachError || attachInfo || isRecording || isTranscribing || isCorrecting || isUploading) && (
+        <div className={`mt-2 flex items-center gap-2 text-xs ${voiceError || attachError ? 'text-red-500' : 'text-gray-400'}`}>
           {isRecording && <AudioLevelBars levels={audioLevels} />}
           <span>
             {voiceError ??
-              voiceInfo ??
-              (isCorrecting
-                ? t(uiLang, 'input.statusCorrecting')
-                : isRecording
-                  ? preferBrowserStt
-                    ? t(uiLang, 'input.statusListening')
-                    : t(uiLang, 'input.statusRecording')
-                  : t(uiLang, 'input.statusTranscribing'))}
+              attachError ??
+              (isUploading
+                ? t(uiLang, 'input.statusAttaching')
+                : voiceInfo ??
+                  attachInfo ??
+                  (isCorrecting
+                    ? t(uiLang, 'input.statusCorrecting')
+                    : isRecording
+                      ? preferBrowserStt
+                        ? t(uiLang, 'input.statusListening')
+                        : t(uiLang, 'input.statusRecording')
+                      : t(uiLang, 'input.statusTranscribing')))}
           </span>
         </div>
       )}

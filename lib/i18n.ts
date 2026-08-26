@@ -73,6 +73,14 @@ const STRINGS: Record<string, { en: string; es: string }> = {
     es: 'Grabando… haz clic en detener al terminar.',
   },
   'input.statusTranscribing': { en: 'Transcribing…', es: 'Transcribiendo…' },
+  'input.attach': { en: 'Attach a file', es: 'Adjuntar un archivo' },
+  'input.attachTitle': {
+    en: 'Attach a file for this conversation',
+    es: 'Adjuntar un archivo para esta conversación',
+  },
+  'input.statusAttaching': { en: 'Attaching file…', es: 'Adjuntando archivo…' },
+  'input.attachDone': { en: 'Attached: {name}', es: 'Adjuntado: {name}' },
+  'input.attachFailed': { en: 'File attachment failed.', es: 'No se pudo adjuntar el archivo.' },
   'input.voiceActive': {
     en: 'Browser recognition active — speak now.',
     es: 'Reconocimiento del navegador activo — habla ahora.',
@@ -89,6 +97,8 @@ const STRINGS: Record<string, { en: string; es: string }> = {
   'chat.loading': { en: 'Loading…', es: 'Cargando…' },
   'chat.playing': { en: 'Playing…', es: 'Reproduciendo…' },
   'chat.stop': { en: 'Stop', es: 'Detener' },
+  'chat.downloadReport': { en: 'Download report:', es: 'Descargar informe:' },
+  'chat.reportFailed': { en: 'Report download failed.', es: 'No se pudo descargar el informe.' },
 };
 
 /** Translate `key` for `lang`, falling back to English, then the key itself. */
