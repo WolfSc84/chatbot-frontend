@@ -83,6 +83,14 @@ The assistant exposes a **language toggle** that does two things: it switches th
 `reply_language` (`en` | `es`, or `auto` to let the backend detect it) on each chat request.
 The BFF passes the field straight through to `ca-ai-core`, which relays it to `ca-agentic`.
 
+## Voice input (live transcription)
+
+The mic button uses the browser's native Speech Recognition (`ChatInput.tsx`, `interimResults`).
+As the user speaks, the growing `final + interim` transcript **streams into the input status line**
+so recording feels live instead of a static "Listening…". On stop, the finalized transcript is
+placed in the textarea via the correct-once path (optional grammar correction). No audio leaves the
+browser for the native path.
+
 ## Multitenancy
 
 A user may belong to several tenants. The assistant UI exposes a **tenant selector**
