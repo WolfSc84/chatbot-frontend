@@ -520,7 +520,7 @@ export async function uploadFile(
  */
 export async function downloadReport(
   report: ReportPayload,
-  format: 'pdf' | 'xlsx' | 'docx',
+  format: 'pdf' | 'xlsx' | 'docx' | 'png',
   product?: string | null,
 ): Promise<{ blob: Blob; filename: string }> {
   const response = await fetch(CHAT_REPORT_URL, {

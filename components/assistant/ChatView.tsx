@@ -1,25 +1,28 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Download, FileSpreadsheet, FileText, Loader2, Pause, Volume2 } from 'lucide-react';
+import { Bot, Download, FileSpreadsheet, FileText, Image as ImageIcon, Loader2, Pause, Volume2 } from 'lucide-react';
 import { useAssistant } from '@/context/AssistantContext';
 import { t, type Lang } from '@/lib/i18n';
 import type { ChatMessage, ReportAttachment } from '@/lib/types';
 import { MarkdownMessage } from './MarkdownMessage';
 
-/** Sales-only: download buttons for a report generated this turn (PDF/Excel/Word). */
+type ReportFormat = 'pdf' | 'xlsx' | 'docx' | 'png';
+
+/** Sales-only: download buttons for a report generated this turn (PDF/Excel/Word/Image). */
 function ReportDownload({ report, lang }: { report: ReportAttachment; lang: Lang }) {
   const { saveReport } = useAssistant();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const formats: { key: 'pdf' | 'xlsx' | 'docx'; label: string; Icon: typeof FileText }[] = [
+  const formats: { key: ReportFormat; label: string; Icon: typeof FileText }[] = [
     { key: 'pdf', label: 'PDF', Icon: FileText },
     { key: 'xlsx', label: 'Excel', Icon: FileSpreadsheet },
     { key: 'docx', label: 'Word', Icon: FileText },
+    { key: 'png', label: lang === 'es' ? 'Imagen' : 'Image', Icon: ImageIcon },
   ];
 
-  const onDownload = async (format: 'pdf' | 'xlsx' | 'docx') => {
+  const onDownload = async (format: ReportFormat) => {
     setError(null);
     setBusy(format);
     try {

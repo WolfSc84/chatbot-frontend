@@ -86,7 +86,7 @@ interface AssistantContextValue {
   /** Sales-only: attach a file to the current conversation as session context. */
   attachFile: (file: File) => Promise<{ filename: string; chars: number }>;
   /** Sales-only: download a generated report in the given format. */
-  saveReport: (report: ReportAttachment, format: 'pdf' | 'xlsx' | 'docx') => Promise<void>;
+  saveReport: (report: ReportAttachment, format: 'pdf' | 'xlsx' | 'docx' | 'png') => Promise<void>;
   newChat: () => void;
 
   // Audio playback
@@ -771,7 +771,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
   // Sales-only: render a generated report to a file and trigger a browser download.
   const saveReport = useCallback(
-    async (report: ReportAttachment, format: 'pdf' | 'xlsx' | 'docx') => {
+    async (report: ReportAttachment, format: 'pdf' | 'xlsx' | 'docx' | 'png') => {
       const { blob, filename } = await downloadReport(report, format, product);
       downloadBlob(blob, filename);
     },
