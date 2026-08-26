@@ -30,6 +30,7 @@ export function AssistantPanel() {
     view,
     setView,
     uiLang,
+    setUiLang,
     product,
     availableTenants,
     messages,
@@ -101,6 +102,16 @@ export function AssistantPanel() {
               )}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
+              {/* Single language control (EN/ES) — sets the UI language and the
+                  forced reply language; voice-input language follows it. */}
+              <button
+                onClick={() => setUiLang(uiLang === 'en' ? 'es' : 'en')}
+                className="rounded-md px-2 py-1 text-xs font-semibold text-gray-300 hover:bg-white/10 hover:text-white"
+                title={t(uiLang, 'input.uiLang')}
+                aria-label={t(uiLang, 'input.uiLang')}
+              >
+                {uiLang === 'en' ? 'EN' : 'ES'}
+              </button>
               {IS_L1_SUPPORT_MODE && operatorEmail && (
                 <button
                   onClick={clearOperator}

@@ -120,7 +120,6 @@ export function ChatInput() {
     sessionExpired,
     messages,
     uiLang,
-    setUiLang,
     attachFile,
   } = useAssistant();
   // The product (Sales / Knowledge Center) may only be chosen at the start of a
@@ -158,14 +157,13 @@ export function ChatInput() {
   const [isUploading, setIsUploading] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [attachInfo, setAttachInfo] = useState<string | null>(null);
-  // Speech-recognition language (BCP-47). Drives recognition.lang so voice
-  // input works in Spanish (Puerto Rico client) as well as English. Defaults to
-  // the browser locale; SSR-safe (navigator is undefined on the server).
-  const [voiceLang, setVoiceLang] = useState<'en-US' | 'es-US'>(() =>
-    typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('es')
-      ? 'es-US'
-      : 'en-US',
-  );
+  // Speech-recognition language (BCP-47), derived from the single UI language
+  // toggle so there is ONE language control (no separate voice-language select).
+  // Drives recognition.lang + the STT model language so voice input follows EN/ES.
+  const voiceLang: 'en-US' | 'es-US' = uiLang === 'es' ? 'es-US' : 'en-US';
+  // Set when a browser-STT network/service failure has scheduled a seamless
+  // fallback to the server-side STT path, so onend skips the "no speech" notice.
+  const sttFallbackRef = useRef(false);
   // Start with true so mic works immediately; flipped to false when the backend
   // reports a reachable server-side STT model (env-driven; see STT_MODEL).
   const [preferBrowserStt, setPreferBrowserStt] = useState(true);
@@ -422,6 +420,23 @@ export function ChatInput() {
 
       const code = event.error ?? '';
       const edge = isEdgeBrowser();
+
+      // Browser STT (Chrome) relies on a cloud speech service; a `network` /
+      // `service-not-available` failure means that service is unreachable — but
+      // the app ALSO has a server-side STT model (record→upload→transcribe). On
+      // those failures, seamlessly fall back to the server path instead of a
+      // dead-end error. (Edge is excluded: it uses the Windows on-device engine,
+      // whose guidance is more actionable than a silent fallback.)
+      const serverSttAvailable =
+        !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined';
+      if (!edge && serverSttAvailable && (code === 'network' || code === 'service-not-available')) {
+        sttFallbackRef.current = true; // onend must skip the "no speech" notice
+        setPreferBrowserStt(false); // subsequent clicks go straight to server STT
+        setVoiceInfo(t(uiLang, 'input.statusRecording'));
+        setTimeout(() => void startRecording(true), 0); // after onend cleans up
+        return;
+      }
+
       let message: string;
       switch (code) {
         case 'not-allowed':
@@ -468,6 +483,13 @@ export function ChatInput() {
       setLiveTranscript('');
       stopAudioVisualiser();
 
+      // A network/service failure scheduled a server-side fallback — that path
+      // owns the next recording, so don't surface a spurious "no speech" notice.
+      if (sttFallbackRef.current) {
+        sttFallbackRef.current = false;
+        return;
+      }
+
       const transcript = finalTranscript.trim();
       if (!transcript) {
         setVoiceInfo(t(uiLang, 'input.voiceNoSpeech'));
@@ -491,12 +513,14 @@ export function ChatInput() {
     recognition.start();
   };
 
-  const startRecording = async () => {
+  const startRecording = async (forceServer = false) => {
     if (streaming || isTranscribing || isRecording) return;
     setVoiceError(null);
     setVoiceInfo(null);
 
-    if (preferBrowserStt) {
+    // forceServer skips browser STT — used by the network/service-error fallback
+    // so we don't loop back into the failing browser recogniser.
+    if (preferBrowserStt && !forceServer) {
       void startBrowserSpeechRecognition();
       return;
     }
@@ -737,35 +761,6 @@ export function ChatInput() {
         >
           {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            const next = uiLang === 'en' ? 'es' : 'en';
-            setUiLang(next);
-            // Keep voice-input language aligned with the UI language toggle.
-            setVoiceLang(next === 'es' ? 'es-US' : 'en-US');
-          }}
-          aria-label={t(uiLang, 'input.uiLang')}
-          title={t(uiLang, 'input.uiLang')}
-          className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white px-2 text-xs font-medium text-gray-600 outline-none transition-colors hover:border-accent-400 hover:text-accent-700 focus:border-accent-400"
-        >
-          {uiLang === 'en' ? 'EN' : 'ES'}
-        </button>
-        <label className="sr-only" htmlFor="voice-language">
-          {t(uiLang, 'input.voiceLang')}
-        </label>
-        <select
-          id="voice-language"
-          value={voiceLang}
-          onChange={(e) => setVoiceLang(e.target.value as 'en-US' | 'es-US')}
-          disabled={isRecording || isTranscribing || isCorrecting || streaming}
-          className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-600 outline-none transition-colors hover:border-accent-400 focus:border-accent-400 disabled:cursor-not-allowed disabled:opacity-40"
-          title={t(uiLang, 'input.voiceLang')}
-          aria-label={t(uiLang, 'input.voiceLang')}
-        >
-          <option value="en-US">English</option>
-          <option value="es-US">Español</option>
-        </select>
         <button
           onClick={() => void submit()}
           disabled={!draft.trim() || !product || streaming || isRecording || isTranscribing || isCorrecting}
