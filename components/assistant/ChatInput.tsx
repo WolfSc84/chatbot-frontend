@@ -149,6 +149,9 @@ export function ChatInput() {
   const [isCorrecting, setIsCorrecting] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceInfo, setVoiceInfo] = useState<string | null>(null);
+  // Live (final + interim) transcript shown in the status line while recording, so
+  // the user sees words appear as they speak instead of a static "Listening…".
+  const [liveTranscript, setLiveTranscript] = useState('');
   // Sales-only session file attach. The parsed text rides the current thread as
   // ephemeral session context (never the tenant corpus); see attachFile in context.
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -366,6 +369,7 @@ export function ChatInput() {
     }
 
     let finalTranscript = '';
+    setLiveTranscript('');
     const recognition = new SpeechRecognition();
     // continuous=true: keeps listening until the user clicks stop,
     // capturing full sentences without cutting off mid-speech.
@@ -406,11 +410,14 @@ export function ChatInput() {
         }
       }
       interimTranscriptRef.current = interim;
+      // Stream the growing transcript to the UI so recording feels live.
+      setLiveTranscript(`${finalTranscript}${interim}`.trim());
     };
 
     recognition.onerror = (event) => {
       setIsRecording(false);
       speechRecognitionRef.current = null;
+      setLiveTranscript('');
       stopAudioVisualiser();
 
       const code = event.error ?? '';
@@ -458,6 +465,7 @@ export function ChatInput() {
       speechRecognitionRef.current = null;
       setVoiceInfo(null);
       interimTranscriptRef.current = '';
+      setLiveTranscript('');
       stopAudioVisualiser();
 
       const transcript = finalTranscript.trim();
@@ -771,7 +779,7 @@ export function ChatInput() {
       {(voiceError || voiceInfo || attachError || attachInfo || isRecording || isTranscribing || isCorrecting || isUploading) && (
         <div className={`mt-2 flex items-center gap-2 text-xs ${voiceError || attachError ? 'text-red-500' : 'text-gray-400'}`}>
           {isRecording && <AudioLevelBars levels={audioLevels} />}
-          <span>
+          <span className={isRecording && liveTranscript ? 'italic text-gray-500' : undefined}>
             {voiceError ??
               attachError ??
               (isUploading
@@ -781,9 +789,12 @@ export function ChatInput() {
                   (isCorrecting
                     ? t(uiLang, 'input.statusCorrecting')
                     : isRecording
-                      ? preferBrowserStt
-                        ? t(uiLang, 'input.statusListening')
-                        : t(uiLang, 'input.statusRecording')
+                      ? // Live-stream the transcript as it comes in; fall back to the
+                        // static listening/recording label until the first words land.
+                        liveTranscript ||
+                        (preferBrowserStt
+                          ? t(uiLang, 'input.statusListening')
+                          : t(uiLang, 'input.statusRecording'))
                       : t(uiLang, 'input.statusTranscribing')))}
           </span>
         </div>
