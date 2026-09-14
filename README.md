@@ -1,7 +1,7 @@
 # chatbot-frontend — web-interface simulator (BFF)
 
 A **Next.js** web app that simulates a CRM/dashboard product with the generic assistant
-embedded in it. It is the third service of the chatbot system and acts as a
+embedded in it. It is the third service of the assistant system and acts as a
 **backend-for-frontend (BFF)**: the browser talks only to this app's `app/api/*` routes,
 and those routes proxy to **`ca-ai-core`** with the backend bearer token injected
 **server-side** — the token is never exposed to the browser.

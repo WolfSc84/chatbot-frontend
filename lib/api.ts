@@ -70,6 +70,10 @@ export interface StreamChatOptions {
   onNode?: (nodeName: string | null) => void;
   /** Called for each structured loading step emitted by the backend. */
   onProgress?: (step: AgentProgressStep) => void;
+  /** Called once on the early `session` event, before agent work — carries the
+   * server-owned thread_id so continuity survives a turn that errors/times out
+   * before `complete`. */
+  onSession?: (threadId: string) => void;
   /** Called once on the final `complete` event. */
   onComplete?: (payload: StreamCompletePayload) => void;
   /** Called on a stream-level error event. */
@@ -183,6 +187,7 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
     onToken,
     onNode,
     onProgress,
+    onSession,
     onComplete,
     onError,
   } = options;
@@ -244,6 +249,13 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
       }
 
       switch (data.type) {
+        case 'session': {
+          // Early server-owned thread_id, emitted before agent work. Storing it
+          // now means a turn that errors/times out before `complete` still leaves
+          // the client able to resume the same thread instead of forking a new one.
+          if (typeof data.thread_id === 'string') onSession?.(data.thread_id);
+          break;
+        }
         case 'token': {
           if (typeof data.content === 'string') onToken?.(data.content);
           break;

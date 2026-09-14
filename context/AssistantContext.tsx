@@ -708,6 +708,14 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
               return next;
             });
           },
+          onSession: (threadId) => {
+            // Capture the server thread_id as soon as it arrives (before any
+            // agent output). If this turn later errors or times out before
+            // `complete`, the next turn still resends this id and stays on the
+            // same thread instead of silently starting a new session.
+            threadIdRef.current = threadId;
+            saveThreadProduct(threadId, product);
+          },
           onComplete: ({ response, threadId, ticketClosed, report }) => {
             threadIdRef.current = threadId;
             // Persist the product for this thread so it survives reloads and is
