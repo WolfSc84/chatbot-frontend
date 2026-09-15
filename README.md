@@ -63,6 +63,7 @@ app/
 │   (account, analytics, marketing, policy-management, prospecting, settings, …)
 └── api/                        # BFF proxy route handlers to ca-ai-core
     ├── chat/                   # SSE chat relay (streams ca-ai-core's response)
+    ├── auth/                   # login/refresh/logout/me proxy (httpOnly session cookies)
     ├── sessions/               # session history
     ├── tickets/                # ticket views + board
     ├── tenants/                # tenant list for the tenant selector
@@ -94,9 +95,11 @@ browser for the native path.
 ## Multitenancy
 
 A user may belong to several tenants. The assistant UI exposes a **tenant selector**
-(backed by `app/api/tenants`), and the chosen tenant is sent to the backend on every request
-via the `x-platform-id` header. The BFF forwards it to `ca-ai-core`, which authorizes the
-selection against the caller's membership and isolates all data per tenant — the frontend
+(backed by `app/api/tenants`), and the chosen tenant is sent from the browser to the BFF on
+every request via the **`x-product`** header (`lib/api.ts` `productHeader()`). The BFF route
+handlers translate it **server-side** into the backend's canonical **`x-platform-id`**
+(`lib/server/backend.ts` `resolveTenant()`) and forward that to `ca-ai-core`, which authorizes
+the selection against the caller's membership and isolates all data per tenant — the frontend
 never sees another tenant's data.
 
 ## Deployment
