@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   deleteSession,
@@ -27,7 +28,14 @@ import type {
   TicketSort,
 } from '@/lib/types';
 import { IS_L1_SUPPORT_MODE } from '@/lib/flags';
-import type { Lang } from '@/lib/i18n';
+import { applyHostActions } from '@/lib/hostActions';
+import {
+  isRealtimeSupported,
+  RealtimeDisabledError,
+  RealtimeSession,
+  type RealtimeState,
+} from '@/lib/realtime';
+import { t, type Lang } from '@/lib/i18n';
 
 type AssistantStatus = 'ready' | 'streaming' | 'error';
 export type AssistantView = 'home' | 'chat' | 'history' | 'tickets';
@@ -81,6 +89,18 @@ interface AssistantContextValue {
   loadHistory: () => Promise<void>;
   openSession: (sessionId: string) => Promise<void>;
   removeSession: (sessionId: string) => Promise<void>;
+
+  // Live voice (realtime duplex) — third input mode, flag-gated backend-side.
+  /** idle | connecting | listening | thinking | speaking | error. */
+  voiceState: RealtimeState;
+  /** False once we learn the browser or the backend cannot do live voice. */
+  voiceAvailable: boolean;
+  /** Why live voice is unavailable / what went wrong, for the UI to show. */
+  voiceError: string | null;
+  /** Current mic input level 0..1, for the existing level bars. */
+  voiceLevel: number;
+  startLiveVoice: () => Promise<void>;
+  stopLiveVoice: () => void;
 
   sendMessage: (text: string) => Promise<void>;
   /** Sales-only: attach a file to the current conversation as session context. */
@@ -214,6 +234,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(true);
   const [view, setView] = useState<AssistantView>('home');
 
@@ -295,7 +316,15 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [rawTicket, setRawTicket] = useState<unknown>(null);
   const [rawTicketLoading, setRawTicketLoading] = useState(false);
 
+  const [voiceState, setVoiceState] = useState<RealtimeState>('idle');
+  const [voiceAvailable, setVoiceAvailable] = useState(true);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceLevel, setVoiceLevel] = useState(0);
+
   const threadIdRef = useRef<string | null>(null);
+  const voiceSessionRef = useRef<RealtimeSession | null>(null);
+  // Ids of the message pair the current spoken turn is filling in.
+  const voiceTurnRef = useRef<{ user: string; assistant: string } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
 
@@ -665,6 +694,119 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // ---------------------------------------------------------------------
+  // Live voice (realtime duplex)
+  // ---------------------------------------------------------------------
+
+  /** Replace or extend one message's text in place. */
+  const writeVoiceText = useCallback((id: string, text: string, final: boolean) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, content: final ? text : m.content + text } : m)),
+    );
+  }, []);
+
+  /**
+   * Ensure the pair of bubbles the current spoken turn writes into exists.
+   * A turn ends when the assistant's text goes final, so the next transcript
+   * opens a fresh pair — same thread, same message list as typed chat.
+   */
+  const ensureVoiceTurn = useCallback(() => {
+    if (voiceTurnRef.current) return voiceTurnRef.current;
+    const pair = { user: nextId(), assistant: nextId() };
+    voiceTurnRef.current = pair;
+    setMessages((prev) => [
+      ...prev,
+      { id: pair.user, role: 'user', content: '' },
+      { id: pair.assistant, role: 'assistant', content: '' },
+    ]);
+    return pair;
+  }, []);
+
+  const stopLiveVoice = useCallback(() => {
+    voiceSessionRef.current?.stop();
+    voiceSessionRef.current = null;
+    voiceTurnRef.current = null;
+    setVoiceLevel(0);
+  }, []);
+
+  // Graph-emitted host-page actions. Typed turns and spoken turns call this same
+  // function, so a spoken request does exactly what the typed equivalent does.
+  const runHostActions = useCallback(
+    (actions: unknown) => applyHostActions(actions, (path) => router.push(path)),
+    [router],
+  );
+
+  const startLiveVoice = useCallback(async () => {
+    if (voiceSessionRef.current || !product) return;
+    if (!isRealtimeSupported()) {
+      setVoiceAvailable(false);
+      setVoiceError(t(uiLang, 'input.liveUnsupported'));
+      return;
+    }
+
+    setVoiceError(null);
+    setView('chat');
+
+    const session = new RealtimeSession({
+      onState: setVoiceState,
+      onReady: (info) => {
+        if (info.thread_id) {
+          threadIdRef.current = info.thread_id;
+          saveThreadProduct(info.thread_id, product);
+        }
+      },
+      onUserTranscript: (text, final) => {
+        writeVoiceText(ensureVoiceTurn().user, text, final);
+      },
+      onAssistantText: (text, final) => {
+        writeVoiceText(ensureVoiceTurn().assistant, text, final);
+        // Final assistant text closes the turn; the next transcript starts a new pair.
+        if (final) voiceTurnRef.current = null;
+      },
+      onActions: runHostActions,
+      onError: (message, recoverable) => {
+        setVoiceError(message);
+        if (!recoverable) stopLiveVoice();
+      },
+    });
+    voiceSessionRef.current = session;
+
+    try {
+      await session.start({
+        threadId: threadIdRef.current,
+        // One source of truth for spoken and typed replies: the UI toggle.
+        replyLanguage: uiLang,
+        currentPage: typeof window !== 'undefined' ? window.location.pathname : null,
+        product,
+      });
+    } catch (err) {
+      voiceSessionRef.current = null;
+      if (err instanceof RealtimeDisabledError) {
+        setVoiceAvailable(false);
+        setVoiceError(t(uiLang, 'input.liveOff'));
+        // Name check, not `instanceof DOMException` — a denied mic surfaces as a
+        // DOMException in browsers but as a plain named Error behind some polyfills.
+      } else if (err instanceof Error && err.name === 'NotAllowedError') {
+        setVoiceError(t(uiLang, 'input.liveDenied'));
+      } else {
+        setVoiceError(err instanceof Error ? err.message : t(uiLang, 'input.liveFailed'));
+      }
+      setVoiceState('idle');
+    }
+  }, [ensureVoiceTurn, product, runHostActions, stopLiveVoice, uiLang, writeVoiceText]);
+
+  // Poll the mic level only while a call is up — no timer when idle.
+  useEffect(() => {
+    if (voiceState === 'idle' || voiceState === 'error') return;
+    const timer = window.setInterval(() => {
+      setVoiceLevel(voiceSessionRef.current?.micLevel ?? 0);
+    }, 80);
+    return () => window.clearInterval(timer);
+  }, [voiceState]);
+
+  // Never leave a socket + mic open behind an unmounted widget.
+  useEffect(() => stopLiveVoice, [stopLiveVoice]);
+
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -716,7 +858,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
             threadIdRef.current = threadId;
             saveThreadProduct(threadId, product);
           },
-          onComplete: ({ response, threadId, ticketClosed, report }) => {
+          onComplete: ({ response, threadId, ticketClosed, report, actions }) => {
             threadIdRef.current = threadId;
             // Persist the product for this thread so it survives reloads and is
             // restored (and re-sent) when the session is reopened.
@@ -734,6 +876,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
             }
             // Live process steps are ephemeral — clear them once the turn completes.
             setAgentProgress([]);
+            runHostActions(actions);
             // A ticket was closed this turn — refresh the board so it drops out.
             if (ticketClosed) {
               void refreshTicketBoardSilently();
@@ -758,7 +901,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         setActiveNode(null);
       }
     },
-    [status, product, uiLang, refreshTicketBoardSilently],
+    [status, product, uiLang, refreshTicketBoardSilently, runHostActions],
   );
 
   // Sales-only: attach a file to the current conversation. Rides the current thread
@@ -817,6 +960,12 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       loadHistory,
       openSession,
       removeSession,
+      voiceState,
+      voiceAvailable,
+      voiceError,
+      voiceLevel,
+      startLiveVoice,
+      stopLiveVoice,
       sendMessage,
       attachFile,
       saveReport,
@@ -880,6 +1029,12 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       loadHistory,
       openSession,
       removeSession,
+      voiceState,
+      voiceAvailable,
+      voiceError,
+      voiceLevel,
+      startLiveVoice,
+      stopLiveVoice,
       sendMessage,
       attachFile,
       saveReport,

@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Mic, Paperclip, SendHorizontal, SpellCheck, Square } from 'lucide-react';
+import { AudioLines, Mic, Paperclip, PhoneOff, SendHorizontal, SpellCheck, Square } from 'lucide-react';
 import { transcribeAudio, correctTranscript } from '@/lib/api';
 import { useAssistant, type ProductSelection } from '@/context/AssistantContext';
 import { t } from '@/lib/i18n';
 
 const GRAMMAR_CHECK_STORAGE_KEY = 'platform:grammarCheckEnabled';
+
+// Live voice reports one scalar level; spread it across the existing bar widget
+// so the indicator looks alive without a second analyser.
+const LIVE_BAR_WEIGHTS = [0.5, 0.8, 1, 0.8, 0.5];
 
 // ---------------------------------------------------------------------------
 // Animated audio-level bars shown while the mic is active
@@ -121,7 +125,14 @@ export function ChatInput() {
     messages,
     uiLang,
     attachFile,
+    voiceState: liveVoiceState,
+    voiceAvailable: liveVoiceAvailable,
+    voiceError: liveVoiceError,
+    voiceLevel: liveVoiceLevel,
+    startLiveVoice,
+    stopLiveVoice,
   } = useAssistant();
+  const liveVoiceOn = liveVoiceState !== 'idle' && liveVoiceState !== 'error';
   // The product (Sales / Knowledge Center) may only be chosen at the start of a
   // conversation. Once the first message is sent it is locked for the thread;
   // starting a new chat (or resuming a session with no saved product) allows
@@ -748,9 +759,26 @@ export function ChatInput() {
         >
           <SpellCheck className="h-4 w-4" />
         </button>
+        {liveVoiceAvailable && (
+          <button
+            type="button"
+            onClick={liveVoiceOn ? stopLiveVoice : () => void startLiveVoice()}
+            disabled={!product || streaming || isRecording || isTranscribing || isCorrecting}
+            aria-label={t(uiLang, liveVoiceOn ? 'input.liveStop' : 'input.liveStart')}
+            aria-pressed={liveVoiceOn}
+            title={t(uiLang, liveVoiceOn ? 'input.liveStopTitle' : 'input.liveStartTitle')}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              liveVoiceOn
+                ? 'border-accent-400 bg-accent-50 text-accent-600'
+                : 'border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700'
+            }`}
+          >
+            {liveVoiceOn ? <PhoneOff className="h-4 w-4" /> : <AudioLines className="h-4 w-4" />}
+          </button>
+        )}
         <button
           onClick={isRecording ? stopRecording : () => void startRecording()}
-          disabled={streaming || isTranscribing || isCorrecting}
+          disabled={streaming || isTranscribing || isCorrecting || liveVoiceOn}
           aria-label={t(uiLang, isRecording ? 'input.voiceStop' : 'input.voiceStart')}
           title={t(uiLang, isRecording ? 'input.voiceStopTitle' : 'input.voiceStartTitle')}
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -763,7 +791,15 @@ export function ChatInput() {
         </button>
         <button
           onClick={() => void submit()}
-          disabled={!draft.trim() || !product || streaming || isRecording || isTranscribing || isCorrecting}
+          disabled={
+            !draft.trim() ||
+            !product ||
+            streaming ||
+            isRecording ||
+            isTranscribing ||
+            isCorrecting ||
+            liveVoiceOn
+          }
           aria-label={t(uiLang, 'input.send')}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-500 text-white transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -771,6 +807,28 @@ export function ChatInput() {
         </button>
         </div>
       </div>
+      {(liveVoiceOn || liveVoiceError) && (
+        <div
+          className={`mt-2 flex items-center gap-2 text-xs ${liveVoiceError ? 'text-red-500' : 'text-gray-400'}`}
+        >
+          {liveVoiceState === 'listening' && (
+            <AudioLevelBars levels={LIVE_BAR_WEIGHTS.map((w) => liveVoiceLevel * w)} />
+          )}
+          <span>
+            {liveVoiceError ??
+              t(
+                uiLang,
+                liveVoiceState === 'connecting'
+                  ? 'input.liveConnecting'
+                  : liveVoiceState === 'thinking'
+                    ? 'input.liveThinking'
+                    : liveVoiceState === 'speaking'
+                      ? 'input.liveSpeaking'
+                      : 'input.liveListening',
+              )}
+          </span>
+        </div>
+      )}
       {(voiceError || voiceInfo || attachError || attachInfo || isRecording || isTranscribing || isCorrecting || isUploading) && (
         <div className={`mt-2 flex items-center gap-2 text-xs ${voiceError || attachError ? 'text-red-500' : 'text-gray-400'}`}>
           {isRecording && <AudioLevelBars levels={audioLevels} />}

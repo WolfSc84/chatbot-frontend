@@ -18,6 +18,7 @@ import { IS_L1_SUPPORT_MODE } from './flags';
 const CHAT_STREAM_URL = '/api/chat/stream';
 const CHAT_AUDIO_URL = '/api/chat/audio';
 const CHAT_TRANSCRIBE_URL = '/api/chat/transcribe';
+const CHAT_REALTIME_TICKET_URL = '/api/chat/realtime/ticket';
 const CHAT_ATTACH_URL = '/api/chat/attach';
 const CHAT_REPORT_URL = '/api/chat/report';
 const CHAT_TRANSCRIBE_CORRECT_URL = '/api/chat/transcribe/correct';
@@ -51,6 +52,9 @@ export interface StreamCompletePayload {
   ticketClosed?: boolean;
   /** Present when a report was generated this turn (Sales-only). */
   report?: ReportPayload | null;
+  /** Raw host-page actions from the graph, for `applyHostActions` (see lib/hostActions.ts).
+   *  The voice path receives the same array, so both behave identically. */
+  actions?: unknown[];
   executionTimeline: AgentProgressStep[];
 }
 
@@ -291,6 +295,7 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
             threadId: (data.thread_id as string) ?? threadId,
             ticketClosed: data.ticket_closed === true,
             report: extractReport(data.actions),
+            actions: Array.isArray(data.actions) ? data.actions : [],
             executionTimeline: finalTimeline,
           });
           break;
@@ -676,4 +681,60 @@ export async function getRawTicket(ticketId: string, product?: string | null): P
   }
 
   return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// Live voice (realtime duplex) — flag-gated
+// ---------------------------------------------------------------------------
+
+export interface RealtimeTicket {
+  ticket: string;
+  expires_in: number;
+  thread_id: string;
+  socket_url: string;
+}
+
+/** Raised when live voice is switched off backend-side (core answers 404). */
+export class RealtimeDisabledError extends Error {}
+
+/**
+ * Mint a single-use admission ticket for the live-voice socket.
+ *
+ * The ticket — not a bearer — is what the browser presents to `ca-ai-core`,
+ * because a Next.js Route Handler cannot proxy a WebSocket. One ticket per
+ * connect: it is consumed atomically on the first use and expires in ~60s.
+ */
+export async function fetchRealtimeTicket(
+  options: {
+    threadId?: string | null;
+    replyLanguage?: string | null;
+    currentPage?: string | null;
+    product?: string | null;
+  } = {},
+): Promise<RealtimeTicket> {
+  const response = await fetch(CHAT_REALTIME_TICKET_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...productHeader(options.product) },
+    body: JSON.stringify({
+      thread_id: options.threadId ?? null,
+      reply_language: options.replyLanguage ?? null,
+      current_page: options.currentPage ?? null,
+    }),
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const data = (await response.json()) as { error?: string };
+      detail = data.error ?? '';
+    } catch {
+      detail = await response.text().catch(() => '');
+    }
+    if (response.status === 404) {
+      throw new RealtimeDisabledError(detail || 'Live voice is disabled.');
+    }
+    throw new Error(detail || `Could not start live voice (${response.status}).`);
+  }
+
+  return (await response.json()) as RealtimeTicket;
 }
