@@ -51,6 +51,31 @@ const STRINGS: Record<string, { en: string; es: string }> = {
     en: 'Grammar check: off (click to enable)',
     es: 'Corrección gramatical: desactivada (clic para activar)',
   },
+  // Live voice (realtime duplex) — the third input mode
+  'input.liveStart': { en: 'Start live voice', es: 'Iniciar voz en vivo' },
+  'input.liveStop': { en: 'End live voice', es: 'Finalizar voz en vivo' },
+  'input.liveStartTitle': {
+    en: 'Talk to the assistant hands-free',
+    es: 'Habla con el asistente sin usar las manos',
+  },
+  'input.liveStopTitle': { en: 'Hang up', es: 'Colgar' },
+  'input.liveOff': {
+    en: 'Live voice is turned off. Push-to-talk is still available.',
+    es: 'La voz en vivo está desactivada. Aún puedes usar pulsar para hablar.',
+  },
+  'input.liveUnsupported': {
+    en: 'This browser cannot do live voice. Use push-to-talk instead.',
+    es: 'Este navegador no admite voz en vivo. Usa pulsar para hablar.',
+  },
+  'input.liveDenied': {
+    en: 'Microphone access was denied. Enable it or use push-to-talk.',
+    es: 'Se denegó el acceso al micrófono. Actívalo o usa pulsar para hablar.',
+  },
+  'input.liveFailed': { en: 'Could not start live voice.', es: 'No se pudo iniciar la voz en vivo.' },
+  'input.liveConnecting': { en: 'Connecting…', es: 'Conectando…' },
+  'input.liveListening': { en: 'Listening…', es: 'Escuchando…' },
+  'input.liveThinking': { en: 'Thinking…', es: 'Pensando…' },
+  'input.liveSpeaking': { en: 'Speaking…', es: 'Hablando…' },
   'input.voiceStart': { en: 'Start voice recording', es: 'Iniciar grabación de voz' },
   'input.voiceStop': { en: 'Stop voice recording', es: 'Detener grabación de voz' },
   'input.voiceStartTitle': { en: 'Start voice input', es: 'Iniciar entrada de voz' },
