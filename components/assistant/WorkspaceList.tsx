@@ -1,21 +1,17 @@
 'use client';
 
-import { BookOpen, ClipboardList, LineChart, Search, type LucideIcon } from 'lucide-react';
+import { LineChart, Search, type LucideIcon } from 'lucide-react';
 import { WORKSPACES } from '@/lib/mockData';
 import type { Workspace } from '@/lib/types';
 
 const ICONS: Record<string, LucideIcon> = {
   Search,
   LineChart,
-  BookOpen,
-  ClipboardList,
 };
 
 const ICON_STYLES: Record<string, string> = {
   'client-insights': 'bg-sky-100 text-sky-600',
   'market-insights': 'bg-emerald-100 text-emerald-600',
-  'knowledge-center': 'bg-orange-100 text-orange-600',
-  'task-manager': 'bg-purple-100 text-purple-600',
 };
 
 export function WorkspaceList({ onSelect }: { onSelect: (workspace: Workspace) => void }) {

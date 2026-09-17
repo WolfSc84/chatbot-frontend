@@ -1,0 +1,17 @@
+# Build-context excludes for the container image build (podman reads this;
+# Docker reads the identical .dockerignore). Keeping node_modules and build
+# artifacts OUT of the context is both correctness (the builder runs `npm ci`
+# for the image's own platform — host node_modules is the wrong arch) and a
+# hard requirement on the memory-constrained local VM (copying node_modules
+# blows the build context and OOMs the transfer).
+node_modules
+.next
+.git
+.gitignore
+npm-debug.log*
+Dockerfile
+.dockerignore
+.containerignore
+.env
+.env.*
+README.md

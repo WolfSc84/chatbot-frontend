@@ -18,9 +18,13 @@ import { IS_L1_SUPPORT_MODE } from './flags';
 const CHAT_STREAM_URL = '/api/chat/stream';
 const CHAT_AUDIO_URL = '/api/chat/audio';
 const CHAT_TRANSCRIBE_URL = '/api/chat/transcribe';
+const CHAT_REALTIME_TICKET_URL = '/api/chat/realtime/ticket';
+const CHAT_ATTACH_URL = '/api/chat/attach';
+const CHAT_REPORT_URL = '/api/chat/report';
 const CHAT_TRANSCRIBE_CORRECT_URL = '/api/chat/transcribe/correct';
 const CHAT_EXPORT_SUMMARY_URL = '/api/chat/export-summary';
 const SESSIONS_URL = '/api/sessions';
+const TENANTS_URL = '/api/tenants';
 const TICKETS_BOARD_URL = '/api/tickets/board';
 const CHAT_WARMUP_URL = '/api/chat/warmup';
 const CHAT_LOGIN_URL = '/api/chat/login';
@@ -33,10 +37,24 @@ export interface AudioSynthesisOptions {
   volume?: string;
 }
 
+/** Structured report payload emitted by the Sales-exclusive report subagent,
+ * carried in the `complete` event's actions. Downloaded via {@link downloadReport}. */
+export interface ReportPayload {
+  title: string;
+  subtitle?: string;
+  filename?: string;
+  sections: { heading: string; body?: string; bullets?: string[] }[];
+}
+
 export interface StreamCompletePayload {
   response: string;
   threadId: string | null;
   ticketClosed?: boolean;
+  /** Present when a report was generated this turn (Sales-only). */
+  report?: ReportPayload | null;
+  /** Raw host-page actions from the graph, for `applyHostActions` (see lib/hostActions.ts).
+   *  The voice path receives the same array, so both behave identically. */
+  actions?: unknown[];
   executionTimeline: AgentProgressStep[];
 }
 
@@ -46,6 +64,9 @@ export interface StreamChatOptions {
   currentPage?: string | null;
   /** Mandatory product context: 'sales' or 'knowledge_center'. */
   product?: string | null;
+  /** Forced reply language (e.g. 'en' / 'es'); mirrors the UI toggle. Omitted
+   * from the request body when falsy so the backend keeps auto-detecting. */
+  replyLanguage?: string;
   signal?: AbortSignal;
   /** Called for each streamed text token. */
   onToken?: (content: string) => void;
@@ -53,6 +74,10 @@ export interface StreamChatOptions {
   onNode?: (nodeName: string | null) => void;
   /** Called for each structured loading step emitted by the backend. */
   onProgress?: (step: AgentProgressStep) => void;
+  /** Called once on the early `session` event, before agent work — carries the
+   * server-owned thread_id so continuity survives a turn that errors/times out
+   * before `complete`. */
+  onSession?: (threadId: string) => void;
   /** Called once on the final `complete` event. */
   onComplete?: (payload: StreamCompletePayload) => void;
   /** Called on a stream-level error event. */
@@ -62,6 +87,18 @@ export interface StreamChatOptions {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null;
   return value as Record<string, unknown>;
+}
+
+/** Pull the structured report out of the complete-event `actions` array, if any. */
+function extractReport(actions: unknown): ReportPayload | null {
+  if (!Array.isArray(actions)) return null;
+  for (const action of actions) {
+    const rec = asRecord(action);
+    if (rec?.type === 'report' && rec.report && typeof rec.report === 'object') {
+      return rec.report as ReportPayload;
+    }
+  }
+  return null;
 }
 
 /**
@@ -149,10 +186,12 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
     threadId,
     currentPage = null,
     product = null,
+    replyLanguage,
     signal,
     onToken,
     onNode,
     onProgress,
+    onSession,
     onComplete,
     onError,
   } = options;
@@ -174,6 +213,9 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
       message,
       current_page: currentPage,
       thread_id: threadId,
+      // Forced reply language override — only sent when set, so an unset toggle
+      // leaves the backend's message-text auto-detection untouched.
+      ...(replyLanguage ? { reply_language: replyLanguage } : {}),
     }),
     signal,
   });
@@ -211,6 +253,13 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
       }
 
       switch (data.type) {
+        case 'session': {
+          // Early server-owned thread_id, emitted before agent work. Storing it
+          // now means a turn that errors/times out before `complete` still leaves
+          // the client able to resume the same thread instead of forking a new one.
+          if (typeof data.thread_id === 'string') onSession?.(data.thread_id);
+          break;
+        }
         case 'token': {
           if (typeof data.content === 'string') onToken?.(data.content);
           break;
@@ -245,6 +294,8 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
             response: text ?? '',
             threadId: (data.thread_id as string) ?? threadId,
             ticketClosed: data.ticket_closed === true,
+            report: extractReport(data.actions),
+            actions: Array.isArray(data.actions) ? data.actions : [],
             executionTimeline: finalTimeline,
           });
           break;
@@ -275,8 +326,40 @@ export async function listSessions(limit = 50, product?: string | null): Promise
   return data.sessions ?? [];
 }
 
-/** Known tenants for cross-tenant history aggregation. */
-export const KNOWN_TENANTS = ['sales', 'knowledge_center'] as const;
+/** A tenant the current user may select, as returned by the backend. */
+export interface TenantOption {
+  id: string;
+  label: string;
+}
+
+/** Thrown when the backend rejects a call with 401 — the session is dead and the
+ *  user must re-authenticate. Distinct from a genuinely empty result so the UI can
+ *  prompt a re-login instead of silently showing "no tenants". */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired');
+    this.name = 'SessionExpiredError';
+  }
+}
+
+/**
+ * Fetch the tenants the authenticated user may select (dynamic, backend-driven).
+ * Onboarding a tenant needs no frontend change. Throws SessionExpiredError on 401
+ * (session dead → prompt re-login); returns [] on network error / genuine empty so
+ * the UI still degrades gracefully (the backend also fail-closed authorizes each request).
+ */
+export async function getTenants(): Promise<TenantOption[]> {
+  let response: Response;
+  try {
+    response = await fetch(TENANTS_URL, { method: 'GET', cache: 'no-store' });
+  } catch {
+    return []; // network error — not an auth problem
+  }
+  if (response.status === 401) throw new SessionExpiredError();
+  if (!response.ok) return [];
+  const data = (await response.json()) as { tenants?: { id: string; display_name?: string }[] };
+  return (data.tenants ?? []).map((t) => ({ id: t.id, label: t.display_name || t.id }));
+}
 
 /** Derive the tenant from the `tenant::…` session-id prefix (fallback tag). */
 export function tenantOfSessionId(id: string): string | null {
@@ -285,13 +368,15 @@ export function tenantOfSessionId(id: string): string | null {
 }
 
 /**
- * Fetch chat history across ALL known tenants for the current user, tagged and
- * merged newest-first. Each per-tenant call stays tenant-scoped and guarded
- * server-side (no cross-tenant query), so isolation is preserved by construction.
+ * Fetch chat history across ALL tenants the user may select, tagged and merged
+ * newest-first. Tenants are discovered dynamically; each per-tenant call stays
+ * tenant-scoped and guarded server-side (no cross-tenant query), so isolation is
+ * preserved by construction.
  */
 export async function listAllTenantSessions(limit = 50): Promise<SessionInfo[]> {
+  const tenants = await getTenants();
   const perTenant = await Promise.all(
-    KNOWN_TENANTS.map((t) => listSessions(limit, t).catch(() => [] as SessionInfo[])),
+    tenants.map((t) => listSessions(limit, t.id).catch(() => [] as SessionInfo[])),
   );
   const seen = new Set<string>();
   return perTenant
@@ -400,6 +485,82 @@ export async function transcribeAudio(
 
   const data = (await response.json()) as { text?: string };
   return (data.text ?? '').trim();
+}
+
+/**
+ * Attach a file to the current conversation as Sales-only session context.
+ * Returns the (possibly server-minted) thread id so the follow-up turn resumes the
+ * same conversation the file rode. Sales-gated server-side (403 for other tenants).
+ */
+export async function uploadFile(
+  file: File,
+  product?: string | null,
+  threadId?: string | null,
+): Promise<{ threadId: string; filename: string; chars: number }> {
+  const formData = new FormData();
+  formData.append('file', file, file.name);
+  if (threadId) formData.append('thread_id', threadId);
+
+  const response = await fetch(CHAT_ATTACH_URL, {
+    method: 'POST',
+    headers: productHeader(product),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const data = (await response.json()) as { error?: string };
+      detail = data.error ?? '';
+    } catch {
+      detail = await response.text().catch(() => '');
+    }
+    throw new Error(detail || `File attachment failed (${response.status}).`);
+  }
+
+  const data = (await response.json()) as {
+    thread_id?: string;
+    filename?: string;
+    chars?: number;
+  };
+  return {
+    threadId: data.thread_id ?? '',
+    filename: data.filename ?? file.name,
+    chars: data.chars ?? 0,
+  };
+}
+
+/**
+ * Render a generated report to a downloadable file (PDF/Excel/Word) via the proxy.
+ * Returns the file Blob plus the server-suggested filename. Sales-gated server-side
+ * (403 for tenants without the `reporting` capability).
+ */
+export async function downloadReport(
+  report: ReportPayload,
+  format: 'pdf' | 'xlsx' | 'docx' | 'png',
+  product?: string | null,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(CHAT_REPORT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...productHeader(product) },
+    body: JSON.stringify({ report, format }),
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const data = (await response.json()) as { error?: string };
+      detail = data.error ?? '';
+    } catch {
+      detail = await response.text().catch(() => '');
+    }
+    throw new Error(detail || `Report download failed (${response.status}).`);
+  }
+
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  const filename = match?.[1] ?? `${report.filename ?? 'report'}.${format}`;
+  return { blob: await response.blob(), filename };
 }
 
 /**
@@ -520,4 +681,60 @@ export async function getRawTicket(ticketId: string, product?: string | null): P
   }
 
   return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// Live voice (realtime duplex) — flag-gated
+// ---------------------------------------------------------------------------
+
+export interface RealtimeTicket {
+  ticket: string;
+  expires_in: number;
+  thread_id: string;
+  socket_url: string;
+}
+
+/** Raised when live voice is switched off backend-side (core answers 404). */
+export class RealtimeDisabledError extends Error {}
+
+/**
+ * Mint a single-use admission ticket for the live-voice socket.
+ *
+ * The ticket — not a bearer — is what the browser presents to `ca-ai-core`,
+ * because a Next.js Route Handler cannot proxy a WebSocket. One ticket per
+ * connect: it is consumed atomically on the first use and expires in ~60s.
+ */
+export async function fetchRealtimeTicket(
+  options: {
+    threadId?: string | null;
+    replyLanguage?: string | null;
+    currentPage?: string | null;
+    product?: string | null;
+  } = {},
+): Promise<RealtimeTicket> {
+  const response = await fetch(CHAT_REALTIME_TICKET_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...productHeader(options.product) },
+    body: JSON.stringify({
+      thread_id: options.threadId ?? null,
+      reply_language: options.replyLanguage ?? null,
+      current_page: options.currentPage ?? null,
+    }),
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const data = (await response.json()) as { error?: string };
+      detail = data.error ?? '';
+    } catch {
+      detail = await response.text().catch(() => '');
+    }
+    if (response.status === 404) {
+      throw new RealtimeDisabledError(detail || 'Live voice is disabled.');
+    }
+    throw new Error(detail || `Could not start live voice (${response.status}).`);
+  }
+
+  return (await response.json()) as RealtimeTicket;
 }

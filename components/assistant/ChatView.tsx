@@ -1,10 +1,60 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { Bot, Loader2, Pause, Volume2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Bot, Download, FileSpreadsheet, FileText, Image as ImageIcon, Loader2, Pause, Volume2 } from 'lucide-react';
 import { useAssistant } from '@/context/AssistantContext';
-import type { ChatMessage } from '@/lib/types';
+import { t, type Lang } from '@/lib/i18n';
+import type { ChatMessage, ReportAttachment } from '@/lib/types';
 import { MarkdownMessage } from './MarkdownMessage';
+
+type ReportFormat = 'pdf' | 'xlsx' | 'docx' | 'png';
+
+/** Sales-only: download buttons for a report generated this turn (PDF/Excel/Word/Image). */
+function ReportDownload({ report, lang }: { report: ReportAttachment; lang: Lang }) {
+  const { saveReport } = useAssistant();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const formats: { key: ReportFormat; label: string; Icon: typeof FileText }[] = [
+    { key: 'pdf', label: 'PDF', Icon: FileText },
+    { key: 'xlsx', label: 'Excel', Icon: FileSpreadsheet },
+    { key: 'docx', label: 'Word', Icon: FileText },
+    { key: 'png', label: lang === 'es' ? 'Imagen' : 'Image', Icon: ImageIcon },
+  ];
+
+  const onDownload = async (format: ReportFormat) => {
+    setError(null);
+    setBusy(format);
+    try {
+      await saveReport(report, format);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t(lang, 'chat.reportFailed'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+        <Download className="h-3.5 w-3.5" />
+        {t(lang, 'chat.downloadReport')}
+      </span>
+      {formats.map(({ key, label, Icon }) => (
+        <button
+          key={key}
+          onClick={() => onDownload(key)}
+          disabled={busy !== null}
+          className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-accent-300 hover:text-accent-600 disabled:opacity-60"
+        >
+          {busy === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+          <span>{label}</span>
+        </button>
+      ))}
+      {error && <span className="text-xs text-rose-500">{error}</span>}
+    </div>
+  );
+}
 
 interface ChatViewProps {
   messages: ChatMessage[];
@@ -12,9 +62,9 @@ interface ChatViewProps {
 }
 
 /** Animated dots shown while waiting for the assistant's response to begin. */
-function TypingIndicator() {
+function TypingIndicator({ lang }: { lang: Lang }) {
   return (
-    <span className="inline-flex items-center gap-1" aria-label="Assistant is responding" role="status">
+    <span className="inline-flex items-center gap-1" aria-label={t(lang, 'chat.typing')} role="status">
       <span className="h-2 w-2 animate-bounce rounded-full bg-accent-500 [animation-delay:-0.3s]" />
       <span className="h-2 w-2 animate-bounce rounded-full bg-accent-500 [animation-delay:-0.15s]" />
       <span className="h-2 w-2 animate-bounce rounded-full bg-accent-500" />
@@ -25,6 +75,7 @@ function TypingIndicator() {
 export function ChatView({ messages, streaming }: ChatViewProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const {
+    uiLang,
     playingMessageId,
     audioLoadingId,
     audioError,
@@ -80,7 +131,7 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                     {showCursor && <span className="accent-blink mt-0.5">▋</span>}
                   </div>
                 ) : showCursor ? (
-                  <TypingIndicator />
+                  <TypingIndicator lang={uiLang} />
                 ) : (
                   '\u00A0'
                 )}
@@ -91,8 +142,8 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                   <button
                     onClick={() => playMessageAudio(msg.id, msg.content)}
                     disabled={isLoadingAudio}
-                    aria-label={isPlaying ? 'Stop audio' : 'Listen'}
-                    title={isPlaying ? 'Stop audio' : 'Listen'}
+                    aria-label={t(uiLang, isPlaying ? 'chat.stopAudio' : 'chat.listen')}
+                    title={t(uiLang, isPlaying ? 'chat.stopAudio' : 'chat.listen')}
                     className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
                       isPlaying
                         ? 'border-accent-200 bg-accent-50 text-accent-600 hover:bg-accent-100'
@@ -102,23 +153,23 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                     {isLoadingAudio ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Loading…</span>
+                        <span>{t(uiLang, 'chat.loading')}</span>
                       </>
                     ) : isPlaying ? (
                       <>
                         <span className="accent-blink inline-flex items-center gap-1.5">
                           <span className="h-2 w-2 rounded-full bg-accent-500" />
-                          Playing…
+                          {t(uiLang, 'chat.playing')}
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-full bg-accent-500 px-2 py-0.5 text-white">
                           <Pause className="h-3.5 w-3.5" />
-                          Stop
+                          {t(uiLang, 'chat.stop')}
                         </span>
                       </>
                     ) : (
                       <>
                         <Volume2 className="h-4 w-4" />
-                        <span>Listen</span>
+                        <span>{t(uiLang, 'chat.listen')}</span>
                       </>
                     )}
                   </button>
@@ -126,6 +177,10 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                     <span className="text-xs text-rose-500">{audioError}</span>
                   )}
                 </div>
+              )}
+
+              {!isUser && msg.report && !showCursor && (
+                <ReportDownload report={msg.report} lang={uiLang} />
               )}
             </div>
           </div>

@@ -1,18 +1,16 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Mic, SendHorizontal, SpellCheck, Square } from 'lucide-react';
+import { AudioLines, Mic, Paperclip, PhoneOff, SendHorizontal, SpellCheck, Square } from 'lucide-react';
 import { transcribeAudio, correctTranscript } from '@/lib/api';
 import { useAssistant, type ProductSelection } from '@/context/AssistantContext';
+import { t } from '@/lib/i18n';
 
 const GRAMMAR_CHECK_STORAGE_KEY = 'platform:grammarCheckEnabled';
 
-// Selectable tenants for the product picker. Add new tenants here — the dropdown
-// scales without layout changes (unlike a fixed row of buttons).
-const TENANT_OPTIONS: { id: ProductSelection; label: string }[] = [
-  { id: 'sales', label: 'Sales' },
-  { id: 'knowledge_center', label: 'Knowledge Center' },
-];
+// Live voice reports one scalar level; spread it across the existing bar widget
+// so the indicator looks alive without a second analyser.
+const LIVE_BAR_WEIGHTS = [0.5, 0.8, 1, 0.8, 0.5];
 
 // ---------------------------------------------------------------------------
 // Animated audio-level bars shown while the mic is active
@@ -115,7 +113,26 @@ function isEdgeBrowser(): boolean {
 }
 
 export function ChatInput() {
-  const { draft, setDraft, sendMessage, status, product, setProduct, messages } = useAssistant();
+  const {
+    draft,
+    setDraft,
+    sendMessage,
+    status,
+    product,
+    setProduct,
+    availableTenants,
+    sessionExpired,
+    messages,
+    uiLang,
+    attachFile,
+    voiceState: liveVoiceState,
+    voiceAvailable: liveVoiceAvailable,
+    voiceError: liveVoiceError,
+    voiceLevel: liveVoiceLevel,
+    startLiveVoice,
+    stopLiveVoice,
+  } = useAssistant();
+  const liveVoiceOn = liveVoiceState !== 'idle' && liveVoiceState !== 'error';
   // The product (Sales / Knowledge Center) may only be chosen at the start of a
   // conversation. Once the first message is sent it is locked for the thread;
   // starting a new chat (or resuming a session with no saved product) allows
@@ -142,13 +159,29 @@ export function ChatInput() {
   const [isCorrecting, setIsCorrecting] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceInfo, setVoiceInfo] = useState<string | null>(null);
-  const [sensitivity, setSensitivity] = useState<SensitivityProfile>('medium');
+  // Live (final + interim) transcript shown in the status line while recording, so
+  // the user sees words appear as they speak instead of a static "Listening…".
+  const [liveTranscript, setLiveTranscript] = useState('');
+  // Sales-only session file attach. The parsed text rides the current thread as
+  // ephemeral session context (never the tenant corpus); see attachFile in context.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [attachInfo, setAttachInfo] = useState<string | null>(null);
+  // Speech-recognition language (BCP-47), derived from the single UI language
+  // toggle so there is ONE language control (no separate voice-language select).
+  // Drives recognition.lang + the STT model language so voice input follows EN/ES.
+  const voiceLang: 'en-US' | 'es-US' = uiLang === 'es' ? 'es-US' : 'en-US';
+  // Set when a browser-STT network/service failure has scheduled a seamless
+  // fallback to the server-side STT path, so onend skips the "no speech" notice.
+  const sttFallbackRef = useRef(false);
   // Start with true so mic works immediately; flipped to false when the backend
   // reports a reachable server-side STT model (env-driven; see STT_MODEL).
   const [preferBrowserStt, setPreferBrowserStt] = useState(true);
   // Grammar/spelling correction on typed and transcribed input. Persists per
-  // user via localStorage; defaults to on.
-  const [grammarCheckEnabled, setGrammarCheckEnabled] = useState(true);
+  // user via localStorage; opt-in / defaults to OFF (Phase 22) — it's a full extra
+  // LLM round-trip that blocks the send, so the user turns it on when they want it.
+  const [grammarCheckEnabled, setGrammarCheckEnabled] = useState(false);
 
   useEffect(() => {
     try {
@@ -170,19 +203,28 @@ export function ChatInput() {
   // Current page path used as correction context
   const currentPage = typeof window !== 'undefined' ? window.location.pathname : undefined;
 
-  // On mount: probe whether the backend has a reachable server-side STT model
-  // (env-driven, provider-agnostic). If it does, use it (higher quality);
-  // otherwise stay on browser recognition.
-  useEffect(() => {
-    fetch('/api/chat/transcribe/status')
-      .then((r) => r.json())
-      .then((data: { available?: boolean }) => {
-        if (data.available === true) setPreferBrowserStt(false);
-      })
-      .catch(() => { /* keep browser STT on network error */ });
-  }, []);
+  // Voice input uses the browser's built-in live recognition: it transcribes
+  // while you speak, with no upload / no ca-core→ca-agentic hop / no single-shot
+  // model wait — the fastest path for the demo. The server-side STT model
+  // (env-driven, higher quality but record→stop→upload→2-hop→non-streaming) is
+  // left intact behind `preferBrowserStt=false` for a future streaming build;
+  // to re-enable it, restore the `/api/chat/transcribe/status` probe here.
 
   const streaming = status === 'streaming';
+
+  const handleAttach = async (file: File) => {
+    setAttachError(null);
+    setAttachInfo(null);
+    setIsUploading(true);
+    try {
+      const { filename } = await attachFile(file);
+      setAttachInfo(t(uiLang, 'input.attachDone').replace('{name}', filename));
+    } catch (err) {
+      setAttachError(err instanceof Error ? err.message : t(uiLang, 'input.attachFailed'));
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // Auto-grow the textarea to fit its content, capped by the max-h-32 CSS class.
   useLayoutEffect(() => {
@@ -206,7 +248,9 @@ export function ChatInput() {
     // chatbot receives clean, well-formed input. Falls back to the original
     // text if correction fails — never block the user from sending.
     let toSend = text;
-    if (grammarCheckEnabled) {
+    // Skip when this exact text was already corrected during voice capture so a
+    // voice turn never pays for two correction round-trips (Phase 22).
+    if (grammarCheckEnabled && text !== lastCorrectedRef.current) {
       setIsCorrecting(true);
       try {
         toSend = await correctTranscript(text, currentPage, product);
@@ -243,7 +287,7 @@ export function ChatInput() {
       const ctx = new AudioCtx();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 32; // small = fast
-      analyser.smoothingTimeConstant = VISUALIZER_TUNING[sensitivity].smoothingTimeConstant;
+      analyser.smoothingTimeConstant = VISUALIZER_TUNING.medium.smoothingTimeConstant;
       ctx.createMediaStreamSource(stream).connect(analyser);
       audioCtxRef.current = ctx;
       analyserRef.current = analyser;
@@ -263,7 +307,7 @@ export function ChatInput() {
           gain: GAIN,
           riseAlpha: RISE_ALPHA,
           fallAlpha: FALL_ALPHA,
-        } = VISUALIZER_TUNING[sensitivity];
+        } = VISUALIZER_TUNING.medium;
         const step = Math.floor(data.length / NUM_BARS);
         const bars = Array.from({ length: NUM_BARS }, (_, i) => {
           const slice = data.slice(i * step, (i + 1) * step);
@@ -311,9 +355,19 @@ export function ChatInput() {
     };
   }, []);
 
-  const appendTranscript = (transcript: string) => {
+  // Tracks the draft value that has already been grammar-corrected (during voice
+  // capture) so submit() doesn't correct the same text a second time (Phase 22:
+  // "correct at most once"). Any manual edit diverges from this, so typed changes
+  // still get corrected on send.
+  const lastCorrectedRef = useRef('');
+
+  const appendTranscript = (transcript: string, corrected = false) => {
     const currentDraft = draftRef.current.trim();
-    setDraft(currentDraft ? `${currentDraft} ${transcript}` : transcript);
+    const next = currentDraft ? `${currentDraft} ${transcript}` : transcript;
+    setDraft(next);
+    // Mark the whole draft corrected only when the appended text was itself
+    // corrected AND nothing uncorrected preceded it; otherwise clear the marker.
+    lastCorrectedRef.current = corrected && !currentDraft ? next.trim() : '';
   };
 
   const startBrowserSpeechRecognition = async () => {
@@ -324,12 +378,13 @@ export function ChatInput() {
     }
 
     let finalTranscript = '';
+    setLiveTranscript('');
     const recognition = new SpeechRecognition();
     // continuous=true: keeps listening until the user clicks stop,
     // capturing full sentences without cutting off mid-speech.
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    recognition.lang = voiceLang;
 
     // Browser STT doesn't expose its internal audio stream, so open a parallel
     // monitor stream purely for live visualisation.
@@ -364,15 +419,35 @@ export function ChatInput() {
         }
       }
       interimTranscriptRef.current = interim;
+      // Stream the growing transcript to the UI so recording feels live.
+      setLiveTranscript(`${finalTranscript}${interim}`.trim());
     };
 
     recognition.onerror = (event) => {
       setIsRecording(false);
       speechRecognitionRef.current = null;
+      setLiveTranscript('');
       stopAudioVisualiser();
 
       const code = event.error ?? '';
       const edge = isEdgeBrowser();
+
+      // Browser STT (Chrome) relies on a cloud speech service; a `network` /
+      // `service-not-available` failure means that service is unreachable — but
+      // the app ALSO has a server-side STT model (record→upload→transcribe). On
+      // those failures, seamlessly fall back to the server path instead of a
+      // dead-end error. (Edge is excluded: it uses the Windows on-device engine,
+      // whose guidance is more actionable than a silent fallback.)
+      const serverSttAvailable =
+        !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined';
+      if (!edge && serverSttAvailable && (code === 'network' || code === 'service-not-available')) {
+        sttFallbackRef.current = true; // onend must skip the "no speech" notice
+        setPreferBrowserStt(false); // subsequent clicks go straight to server STT
+        setVoiceInfo(t(uiLang, 'input.statusRecording'));
+        setTimeout(() => void startRecording(true), 0); // after onend cleans up
+        return;
+      }
+
       let message: string;
       switch (code) {
         case 'not-allowed':
@@ -416,11 +491,19 @@ export function ChatInput() {
       speechRecognitionRef.current = null;
       setVoiceInfo(null);
       interimTranscriptRef.current = '';
+      setLiveTranscript('');
       stopAudioVisualiser();
+
+      // A network/service failure scheduled a server-side fallback — that path
+      // owns the next recording, so don't surface a spurious "no speech" notice.
+      if (sttFallbackRef.current) {
+        sttFallbackRef.current = false;
+        return;
+      }
 
       const transcript = finalTranscript.trim();
       if (!transcript) {
-        setVoiceInfo('No speech detected — click mic to try again.');
+        setVoiceInfo(t(uiLang, 'input.voiceNoSpeech'));
         return;
       }
 
@@ -430,23 +513,25 @@ export function ChatInput() {
       }
       setIsCorrecting(true);
       correctTranscript(transcript, currentPage, product)
-        .then((corrected) => { appendTranscript(corrected); })
+        .then((corrected) => { appendTranscript(corrected, true); })
         .catch(() => { appendTranscript(transcript); })
         .finally(() => { setIsCorrecting(false); });
     };
 
     speechRecognitionRef.current = recognition;
     setIsRecording(true);
-    setVoiceInfo('Browser recognition active — speak now.');
+    setVoiceInfo(t(uiLang, 'input.voiceActive'));
     recognition.start();
   };
 
-  const startRecording = async () => {
+  const startRecording = async (forceServer = false) => {
     if (streaming || isTranscribing || isRecording) return;
     setVoiceError(null);
     setVoiceInfo(null);
 
-    if (preferBrowserStt) {
+    // forceServer skips browser STT — used by the network/service-error fallback
+    // so we don't loop back into the failing browser recogniser.
+    if (preferBrowserStt && !forceServer) {
       void startBrowserSpeechRecognition();
       return;
     }
@@ -498,7 +583,12 @@ export function ChatInput() {
 
         setIsTranscribing(true);
         try {
-          const transcript = await transcribeAudio(audioBlob, `voice-input.${extension}`, 'en', product);
+          const transcript = await transcribeAudio(
+            audioBlob,
+            `voice-input.${extension}`,
+            voiceLang.slice(0, 2), // BCP-47 (es-US) → ISO-639-1 (es) for the STT model
+            product,
+          );
           if (!transcript) {
             setVoiceError('No speech was detected. Please try again.');
             return;
@@ -510,7 +600,7 @@ export function ChatInput() {
           }
           setIsCorrecting(true);
           const corrected = await correctTranscript(transcript, currentPage, product);
-          appendTranscript(corrected);
+          appendTranscript(corrected, true);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : 'Voice transcription failed.';
@@ -578,6 +668,20 @@ export function ChatInput() {
 
   return (
     <div className="border-t border-gray-200 bg-white p-3">
+      {sessionExpired && (
+        <div
+          role="alert"
+          className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+        >
+          <span>{t(uiLang, 'input.sessionExpired')}</span>
+          <a
+            href="/login"
+            className="shrink-0 rounded-md bg-rose-600 px-2 py-1 text-xs font-medium text-white hover:bg-rose-700"
+          >
+            {t(uiLang, 'input.signIn')}
+          </a>
+        </div>
+      )}
       <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-accent-400 focus-within:ring-1 focus-within:ring-accent-400">
         <textarea
           ref={textareaRef}
@@ -585,30 +689,30 @@ export function ChatInput() {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={1}
-          placeholder="Ask the assistant anything..."
+          placeholder={t(uiLang, 'input.placeholder')}
           className="block max-h-32 w-full min-w-0 resize-none overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
         />
         <div className="flex w-full flex-wrap items-center justify-end gap-2">
           {!productLocked && (
             <>
               <label className="sr-only" htmlFor="product-selection">
-                Product (required)
+                {t(uiLang, 'input.product')}
               </label>
               <select
                 id="product-selection"
                 value={product ?? ''}
                 onChange={(e) => setProduct((e.target.value || null) as ProductSelection | null)}
                 disabled={streaming || isRecording || isTranscribing || isCorrecting}
-                aria-label="Product (required)"
-                title="Select tenant"
+                aria-label={t(uiLang, 'input.product')}
+                title={t(uiLang, 'input.selectTenant')}
                 className={`h-8 shrink-0 rounded-lg border bg-white px-2 text-xs font-medium outline-none transition-colors hover:border-accent-400 focus:border-accent-400 disabled:cursor-not-allowed disabled:opacity-40 ${
                   product ? 'border-gray-200 text-gray-700' : 'border-rose-300 text-gray-500'
                 }`}
               >
                 <option value="" disabled>
-                  Select tenant…
+                  {t(uiLang, 'input.selectTenantOption')}
                 </option>
-                {TENANT_OPTIONS.map((opt) => (
+                {availableTenants.map((opt) => (
                   <option key={opt.id} value={opt.id}>
                     {opt.label}
                   </option>
@@ -616,13 +720,37 @@ export function ChatInput() {
               </select>
             </>
           )}
+        {product === 'sales' && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleAttach(f);
+                e.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={streaming || isUploading || isRecording || isTranscribing || isCorrecting}
+              aria-label={t(uiLang, 'input.attach')}
+              title={t(uiLang, 'input.attachTitle')}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:border-accent-400 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={toggleGrammarCheck}
           disabled={isCorrecting}
           aria-pressed={grammarCheckEnabled}
-          aria-label={grammarCheckEnabled ? 'Disable grammar check' : 'Enable grammar check'}
-          title={grammarCheckEnabled ? 'Grammar check: on (click to disable)' : 'Grammar check: off (click to enable)'}
+          aria-label={t(uiLang, grammarCheckEnabled ? 'input.grammarDisable' : 'input.grammarEnable')}
+          title={t(uiLang, grammarCheckEnabled ? 'input.grammarOnTitle' : 'input.grammarOffTitle')}
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
             grammarCheckEnabled
               ? 'border-accent-400 bg-accent-50 text-accent-600'
@@ -631,11 +759,28 @@ export function ChatInput() {
         >
           <SpellCheck className="h-4 w-4" />
         </button>
+        {liveVoiceAvailable && (
+          <button
+            type="button"
+            onClick={liveVoiceOn ? stopLiveVoice : () => void startLiveVoice()}
+            disabled={!product || streaming || isRecording || isTranscribing || isCorrecting}
+            aria-label={t(uiLang, liveVoiceOn ? 'input.liveStop' : 'input.liveStart')}
+            aria-pressed={liveVoiceOn}
+            title={t(uiLang, liveVoiceOn ? 'input.liveStopTitle' : 'input.liveStartTitle')}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              liveVoiceOn
+                ? 'border-accent-400 bg-accent-50 text-accent-600'
+                : 'border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700'
+            }`}
+          >
+            {liveVoiceOn ? <PhoneOff className="h-4 w-4" /> : <AudioLines className="h-4 w-4" />}
+          </button>
+        )}
         <button
           onClick={isRecording ? stopRecording : () => void startRecording()}
-          disabled={streaming || isTranscribing || isCorrecting}
-          aria-label={isRecording ? 'Stop voice recording' : 'Start voice recording'}
-          title={isRecording ? 'Stop recording' : 'Start voice input'}
+          disabled={streaming || isTranscribing || isCorrecting || liveVoiceOn}
+          aria-label={t(uiLang, isRecording ? 'input.voiceStop' : 'input.voiceStart')}
+          title={t(uiLang, isRecording ? 'input.voiceStopTitle' : 'input.voiceStartTitle')}
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
             isRecording
               ? 'animate-pulse border-accent-400 bg-accent-50 text-accent-600'
@@ -644,45 +789,66 @@ export function ChatInput() {
         >
           {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </button>
-        <label className="sr-only" htmlFor="voice-visualizer-sensitivity">
-          Voice visualizer sensitivity
-        </label>
-        <select
-          id="voice-visualizer-sensitivity"
-          value={sensitivity}
-          onChange={(e) => setSensitivity(e.target.value as SensitivityProfile)}
-          disabled={isRecording || isTranscribing || isCorrecting || streaming}
-          className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-600 outline-none transition-colors hover:border-accent-400 focus:border-accent-400 disabled:cursor-not-allowed disabled:opacity-40"
-          title="Visualizer sensitivity"
-          aria-label="Visualizer sensitivity"
-        >
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-        </select>
         <button
           onClick={() => void submit()}
-          disabled={!draft.trim() || !product || streaming || isRecording || isTranscribing || isCorrecting}
-          aria-label="Send message"
+          disabled={
+            !draft.trim() ||
+            !product ||
+            streaming ||
+            isRecording ||
+            isTranscribing ||
+            isCorrecting ||
+            liveVoiceOn
+          }
+          aria-label={t(uiLang, 'input.send')}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-500 text-white transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <SendHorizontal className="h-4 w-4" />
         </button>
         </div>
       </div>
-      {(voiceError || voiceInfo || isRecording || isTranscribing || isCorrecting) && (
-        <div className={`mt-2 flex items-center gap-2 text-xs ${voiceError ? 'text-red-500' : 'text-gray-400'}`}>
-          {isRecording && <AudioLevelBars levels={audioLevels} />}
+      {(liveVoiceOn || liveVoiceError) && (
+        <div
+          className={`mt-2 flex items-center gap-2 text-xs ${liveVoiceError ? 'text-red-500' : 'text-gray-400'}`}
+        >
+          {liveVoiceState === 'listening' && (
+            <AudioLevelBars levels={LIVE_BAR_WEIGHTS.map((w) => liveVoiceLevel * w)} />
+          )}
           <span>
+            {liveVoiceError ??
+              t(
+                uiLang,
+                liveVoiceState === 'connecting'
+                  ? 'input.liveConnecting'
+                  : liveVoiceState === 'thinking'
+                    ? 'input.liveThinking'
+                    : liveVoiceState === 'speaking'
+                      ? 'input.liveSpeaking'
+                      : 'input.liveListening',
+              )}
+          </span>
+        </div>
+      )}
+      {(voiceError || voiceInfo || attachError || attachInfo || isRecording || isTranscribing || isCorrecting || isUploading) && (
+        <div className={`mt-2 flex items-center gap-2 text-xs ${voiceError || attachError ? 'text-red-500' : 'text-gray-400'}`}>
+          {isRecording && <AudioLevelBars levels={audioLevels} />}
+          <span className={isRecording && liveTranscript ? 'italic text-gray-500' : undefined}>
             {voiceError ??
-              voiceInfo ??
-              (isCorrecting
-                ? 'Correcting grammar…'
-                : isRecording
-                  ? preferBrowserStt
-                    ? 'Listening… click stop when done.'
-                    : 'Recording… click stop when done.'
-                  : 'Transcribing…')}
+              attachError ??
+              (isUploading
+                ? t(uiLang, 'input.statusAttaching')
+                : voiceInfo ??
+                  attachInfo ??
+                  (isCorrecting
+                    ? t(uiLang, 'input.statusCorrecting')
+                    : isRecording
+                      ? // Live-stream the transcript as it comes in; fall back to the
+                        // static listening/recording label until the first words land.
+                        liveTranscript ||
+                        (preferBrowserStt
+                          ? t(uiLang, 'input.statusListening')
+                          : t(uiLang, 'input.statusRecording'))
+                      : t(uiLang, 'input.statusTranscribing')))}
           </span>
         </div>
       )}

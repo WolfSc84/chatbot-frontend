@@ -1,32 +1,51 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   deleteSession,
   generateExportSummary,
   getRawTicket,
   getSessionMessages,
+  getTenants,
+  SessionExpiredError,
+  downloadReport,
   getTicketBoard,
   listAllTenantSessions,
   streamChat,
   synthesizeAudio,
   tenantOfSessionId,
+  uploadFile,
+  type TenantOption,
 } from '@/lib/api';
 import type {
   AgentProgressStep,
   ChatMessage,
   ExportFormat,
+  ReportAttachment,
   SessionInfo,
   TicketBoardResponse,
   TicketSort,
 } from '@/lib/types';
 import { IS_L1_SUPPORT_MODE } from '@/lib/flags';
+import { applyHostActions } from '@/lib/hostActions';
+import {
+  isRealtimeSupported,
+  RealtimeDisabledError,
+  RealtimeSession,
+  type RealtimeState,
+} from '@/lib/realtime';
+import { t, type Lang } from '@/lib/i18n';
 
 type AssistantStatus = 'ready' | 'streaming' | 'error';
 export type AssistantView = 'home' | 'chat' | 'history' | 'tickets';
 
-/** Mandatory product context the user must pick before sending a message. */
-export type ProductSelection = 'sales' | 'knowledge_center';
+/**
+ * Mandatory tenant context the user must pick before sending a message. A tenant
+ * id (`^[a-z0-9_]{1,64}$`); the selectable set is discovered dynamically from the
+ * backend (`availableTenants`), so onboarding a tenant needs no frontend change.
+ */
+export type ProductSelection = string;
 
 interface AssistantContextValue {
   isOpen: boolean;
@@ -37,8 +56,17 @@ interface AssistantContextValue {
   view: AssistantView;
   setView: (view: AssistantView) => void;
 
+  /** UI chrome language for the widget (EN/ES). Single source of truth; the
+   * forced reply language sent with each turn mirrors it. */
+  uiLang: Lang;
+  setUiLang: (lang: Lang) => void;
+
   product: ProductSelection | null;
   setProduct: (product: ProductSelection | null) => void;
+  /** Tenants the current user may select (dynamic, backend-driven). */
+  availableTenants: TenantOption[];
+  /** True when tenant discovery got a 401 — the session died; prompt a re-login. */
+  sessionExpired: boolean;
 
   // L1 support-team operator identity (L1 variation). In standard mode
   // operatorReady is always true and the other fields are unused.
@@ -62,7 +90,23 @@ interface AssistantContextValue {
   openSession: (sessionId: string) => Promise<void>;
   removeSession: (sessionId: string) => Promise<void>;
 
+  // Live voice (realtime duplex) — third input mode, flag-gated backend-side.
+  /** idle | connecting | listening | thinking | speaking | error. */
+  voiceState: RealtimeState;
+  /** False once we learn the browser or the backend cannot do live voice. */
+  voiceAvailable: boolean;
+  /** Why live voice is unavailable / what went wrong, for the UI to show. */
+  voiceError: string | null;
+  /** Current mic input level 0..1, for the existing level bars. */
+  voiceLevel: number;
+  startLiveVoice: () => Promise<void>;
+  stopLiveVoice: () => void;
+
   sendMessage: (text: string) => Promise<void>;
+  /** Sales-only: attach a file to the current conversation as session context. */
+  attachFile: (file: File) => Promise<{ filename: string; chars: number }>;
+  /** Sales-only: download a generated report in the given format. */
+  saveReport: (report: ReportAttachment, format: 'pdf' | 'xlsx' | 'docx' | 'png') => Promise<void>;
   newChat: () => void;
 
   // Audio playback
@@ -117,6 +161,9 @@ const nextId = () => `m_${Date.now()}_${idCounter++}`;
  * thread id in localStorage so reopening a conversation restores its product.
  */
 const THREAD_PRODUCT_KEY = 'assistant:threadProduct';
+
+/** localStorage key for the persisted UI chrome language (EN/ES). */
+const UI_LANG_KEY = 'assistant_ui_lang';
 
 function loadThreadProduct(threadId: string | null): ProductSelection | null {
   if (typeof window === 'undefined' || !threadId) return null;
@@ -187,9 +234,52 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(true);
   const [view, setView] = useState<AssistantView>('home');
+
+  // UI chrome language (EN/ES). Defaults from navigator.language, persisted to
+  // localStorage and read back on init (SSR-safe: navigator/localStorage are
+  // only touched on the client). Complements the backend's message auto-detect.
+  const [uiLang, setUiLangState] = useState<Lang>(() => {
+    if (typeof window === 'undefined') return 'en';
+    try {
+      const saved = window.localStorage.getItem(UI_LANG_KEY);
+      if (saved === 'en' || saved === 'es') return saved;
+    } catch {
+      /* storage unavailable — fall through to locale */
+    }
+    return navigator.language?.toLowerCase().startsWith('es') ? 'es' : 'en';
+  });
+  const setUiLang = useCallback((lang: Lang) => {
+    setUiLangState(lang);
+    try {
+      window.localStorage.setItem(UI_LANG_KEY, lang);
+    } catch {
+      /* storage unavailable — held in memory for this session */
+    }
+  }, []);
+
   const [product, setProduct] = useState<ProductSelection | null>(null);
+  const [availableTenants, setAvailableTenants] = useState<TenantOption[]>([]);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  // Discover the tenants this user may select (dynamic, backend-driven). Fetched
+  // once on mount so onboarding a tenant needs no frontend change. A 401 here means
+  // the session expired on an already-open tab — surface it instead of a dead dropdown.
+  useEffect(() => {
+    let cancelled = false;
+    getTenants()
+      .then((tenants) => {
+        if (!cancelled) setAvailableTenants(tenants);
+      })
+      .catch((err) => {
+        if (!cancelled && err instanceof SessionExpiredError) setSessionExpired(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // L1 support-team operator identity (L1 variation), persisted in localStorage.
   const [operatorName, setOperatorName] = useState<string | null>(null);
@@ -226,7 +316,15 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [rawTicket, setRawTicket] = useState<unknown>(null);
   const [rawTicketLoading, setRawTicketLoading] = useState(false);
 
+  const [voiceState, setVoiceState] = useState<RealtimeState>('idle');
+  const [voiceAvailable, setVoiceAvailable] = useState(true);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceLevel, setVoiceLevel] = useState(0);
+
   const threadIdRef = useRef<string | null>(null);
+  const voiceSessionRef = useRef<RealtimeSession | null>(null);
+  // Ids of the message pair the current spoken turn is filling in.
+  const voiceTurnRef = useRef<{ user: string; assistant: string } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
 
@@ -596,6 +694,119 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // ---------------------------------------------------------------------
+  // Live voice (realtime duplex)
+  // ---------------------------------------------------------------------
+
+  /** Replace or extend one message's text in place. */
+  const writeVoiceText = useCallback((id: string, text: string, final: boolean) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, content: final ? text : m.content + text } : m)),
+    );
+  }, []);
+
+  /**
+   * Ensure the pair of bubbles the current spoken turn writes into exists.
+   * A turn ends when the assistant's text goes final, so the next transcript
+   * opens a fresh pair — same thread, same message list as typed chat.
+   */
+  const ensureVoiceTurn = useCallback(() => {
+    if (voiceTurnRef.current) return voiceTurnRef.current;
+    const pair = { user: nextId(), assistant: nextId() };
+    voiceTurnRef.current = pair;
+    setMessages((prev) => [
+      ...prev,
+      { id: pair.user, role: 'user', content: '' },
+      { id: pair.assistant, role: 'assistant', content: '' },
+    ]);
+    return pair;
+  }, []);
+
+  const stopLiveVoice = useCallback(() => {
+    voiceSessionRef.current?.stop();
+    voiceSessionRef.current = null;
+    voiceTurnRef.current = null;
+    setVoiceLevel(0);
+  }, []);
+
+  // Graph-emitted host-page actions. Typed turns and spoken turns call this same
+  // function, so a spoken request does exactly what the typed equivalent does.
+  const runHostActions = useCallback(
+    (actions: unknown) => applyHostActions(actions, (path) => router.push(path)),
+    [router],
+  );
+
+  const startLiveVoice = useCallback(async () => {
+    if (voiceSessionRef.current || !product) return;
+    if (!isRealtimeSupported()) {
+      setVoiceAvailable(false);
+      setVoiceError(t(uiLang, 'input.liveUnsupported'));
+      return;
+    }
+
+    setVoiceError(null);
+    setView('chat');
+
+    const session = new RealtimeSession({
+      onState: setVoiceState,
+      onReady: (info) => {
+        if (info.thread_id) {
+          threadIdRef.current = info.thread_id;
+          saveThreadProduct(info.thread_id, product);
+        }
+      },
+      onUserTranscript: (text, final) => {
+        writeVoiceText(ensureVoiceTurn().user, text, final);
+      },
+      onAssistantText: (text, final) => {
+        writeVoiceText(ensureVoiceTurn().assistant, text, final);
+        // Final assistant text closes the turn; the next transcript starts a new pair.
+        if (final) voiceTurnRef.current = null;
+      },
+      onActions: runHostActions,
+      onError: (message, recoverable) => {
+        setVoiceError(message);
+        if (!recoverable) stopLiveVoice();
+      },
+    });
+    voiceSessionRef.current = session;
+
+    try {
+      await session.start({
+        threadId: threadIdRef.current,
+        // One source of truth for spoken and typed replies: the UI toggle.
+        replyLanguage: uiLang,
+        currentPage: typeof window !== 'undefined' ? window.location.pathname : null,
+        product,
+      });
+    } catch (err) {
+      voiceSessionRef.current = null;
+      if (err instanceof RealtimeDisabledError) {
+        setVoiceAvailable(false);
+        setVoiceError(t(uiLang, 'input.liveOff'));
+        // Name check, not `instanceof DOMException` — a denied mic surfaces as a
+        // DOMException in browsers but as a plain named Error behind some polyfills.
+      } else if (err instanceof Error && err.name === 'NotAllowedError') {
+        setVoiceError(t(uiLang, 'input.liveDenied'));
+      } else {
+        setVoiceError(err instanceof Error ? err.message : t(uiLang, 'input.liveFailed'));
+      }
+      setVoiceState('idle');
+    }
+  }, [ensureVoiceTurn, product, runHostActions, stopLiveVoice, uiLang, writeVoiceText]);
+
+  // Poll the mic level only while a call is up — no timer when idle.
+  useEffect(() => {
+    if (voiceState === 'idle' || voiceState === 'error') return;
+    const timer = window.setInterval(() => {
+      setVoiceLevel(voiceSessionRef.current?.micLevel ?? 0);
+    }, 80);
+    return () => window.clearInterval(timer);
+  }, [voiceState]);
+
+  // Never leave a socket + mic open behind an unmounted widget.
+  useEffect(() => stopLiveVoice, [stopLiveVoice]);
+
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -626,6 +837,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
           message: trimmed,
           threadId: threadIdRef.current,
           product,
+          // Force the reply language to match the UI toggle.
+          replyLanguage: uiLang,
           onToken: appendToAssistant,
           onNode: setActiveNode,
           onProgress: (step) => {
@@ -637,22 +850,33 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
               return next;
             });
           },
-          onComplete: ({ response, threadId, ticketClosed }) => {
+          onSession: (threadId) => {
+            // Capture the server thread_id as soon as it arrives (before any
+            // agent output). If this turn later errors or times out before
+            // `complete`, the next turn still resends this id and stays on the
+            // same thread instead of silently starting a new session.
+            threadIdRef.current = threadId;
+            saveThreadProduct(threadId, product);
+          },
+          onComplete: ({ response, threadId, ticketClosed, report, actions }) => {
             threadIdRef.current = threadId;
             // Persist the product for this thread so it survives reloads and is
             // restored (and re-sent) when the session is reopened.
             saveThreadProduct(threadId, product);
-            if (response) {
+            if (response || report) {
               setMessages((prev) => {
                 const next = [...prev];
                 const last = { ...next[next.length - 1] };
                 if (!last.content) last.content = response;
+                // Attach the generated report (Sales-only) so the bubble can offer a download.
+                if (report) last.report = report;
                 next[next.length - 1] = last;
                 return next;
               });
             }
             // Live process steps are ephemeral — clear them once the turn completes.
             setAgentProgress([]);
+            runHostActions(actions);
             // A ticket was closed this turn — refresh the board so it drops out.
             if (ticketClosed) {
               void refreshTicketBoardSilently();
@@ -677,7 +901,32 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         setActiveNode(null);
       }
     },
-    [status, product, refreshTicketBoardSilently],
+    [status, product, uiLang, refreshTicketBoardSilently, runHostActions],
+  );
+
+  // Sales-only: attach a file to the current conversation. Rides the current thread
+  // (server mints one when absent); we store the returned id so the next turn resumes
+  // the SAME thread the file was scoped to, then persist the product for it.
+  const attachFile = useCallback(
+    async (file: File) => {
+      if (!product) throw new Error('Select a workspace before attaching a file.');
+      const result = await uploadFile(file, product, threadIdRef.current);
+      if (result.threadId) {
+        threadIdRef.current = result.threadId;
+        saveThreadProduct(result.threadId, product);
+      }
+      return { filename: result.filename, chars: result.chars };
+    },
+    [product],
+  );
+
+  // Sales-only: render a generated report to a file and trigger a browser download.
+  const saveReport = useCallback(
+    async (report: ReportAttachment, format: 'pdf' | 'xlsx' | 'docx' | 'png') => {
+      const { blob, filename } = await downloadReport(report, format, product);
+      downloadBlob(blob, filename);
+    },
+    [product],
   );
 
   const value = useMemo<AssistantContextValue>(
@@ -688,8 +937,12 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       toggle,
       view,
       setView,
+      uiLang,
+      setUiLang,
       product,
       setProduct,
+      availableTenants,
+      sessionExpired,
       operatorName,
       operatorEmail,
       operatorReady,
@@ -707,7 +960,15 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       loadHistory,
       openSession,
       removeSession,
+      voiceState,
+      voiceAvailable,
+      voiceError,
+      voiceLevel,
+      startLiveVoice,
+      stopLiveVoice,
       sendMessage,
+      attachFile,
+      saveReport,
       newChat,
       playingMessageId,
       audioLoadingId,
@@ -747,7 +1008,11 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       close,
       toggle,
       view,
+      uiLang,
+      setUiLang,
       product,
+      availableTenants,
+      sessionExpired,
       operatorName,
       operatorEmail,
       operatorReady,
@@ -764,7 +1029,15 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       loadHistory,
       openSession,
       removeSession,
+      voiceState,
+      voiceAvailable,
+      voiceError,
+      voiceLevel,
+      startLiveVoice,
+      stopLiveVoice,
       sendMessage,
+      attachFile,
+      saveReport,
       newChat,
       playingMessageId,
       audioLoadingId,

@@ -19,3 +19,12 @@ function isEnvTruthy(value: string | undefined): boolean {
  * keeping troubleshooting + ticketing. Mirrors the backend `L1_SUPPORT_MODE`.
  */
 export const IS_L1_SUPPORT_MODE = isEnvTruthy(process.env.NEXT_PUBLIC_L1_SUPPORT_MODE);
+
+/**
+ * Real end-user login (IdP behind the core). When true the app requires a signed-in
+ * session — middleware redirects unauthenticated visitors to `/login` and refreshes
+ * expiring tokens — and the assistant shows a sign-out control. When false the app
+ * uses the static dev bearer token (back-compat), so login is strictly opt-in.
+ * Mirrors the core's `AUTH_LOGIN_ENABLED`.
+ */
+export const IS_LOGIN_ENABLED = isEnvTruthy(process.env.NEXT_PUBLIC_AUTH_LOGIN_ENABLED);
