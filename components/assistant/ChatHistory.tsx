@@ -62,14 +62,14 @@ export function ChatHistory({
         Back
       </button>
 
-      {loading && <p className="py-10 text-center text-sm text-gray-400">Loading history…</p>}
+      {loading && <p className="py-10 text-center text-sm text-gray-400 dark:text-gray-500">Loading history…</p>}
 
       {error && !loading && (
         <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>
       )}
 
       {!loading && !error && sessions.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-center text-gray-400">
+        <div className="flex flex-col items-center justify-center py-12 text-center text-gray-400 dark:text-gray-500">
           <History className="mb-2 h-6 w-6" />
           <p className="text-sm">No previous conversations yet</p>
         </div>
@@ -79,24 +79,24 @@ export function ChatHistory({
         sessions.map((session) => (
           <div
             key={session.session_id}
-            className="group flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 transition-colors hover:border-accent-400 hover:bg-accent-50/40"
+            className="group flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 transition-colors hover:border-accent-400 hover:bg-accent-50/40 dark:border-navy-700 dark:bg-navy-800"
           >
             <button
               onClick={() => onOpen(session.session_id)}
               className="flex min-w-0 flex-1 items-center gap-3 text-left"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-navy-700 dark:text-gray-400">
                 <MessageSquare className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-gray-800">
+                <span className="block truncate text-sm font-medium text-gray-800 dark:text-gray-200">
                   {session.title || session.last_message || 'Conversation'}
                 </span>
                 <span className="mt-0.5 flex flex-wrap items-center gap-2">
                   {(() => {
                     const label = tenantLabel(tenantOf(session));
                     return label ? (
-                      <span className="inline-flex items-center rounded-full bg-accent-100 px-1.5 py-0.5 text-[10px] font-semibold text-accent-700">
+                      <span className="inline-flex items-center rounded-full bg-accent-100 px-1.5 py-0.5 text-[10px] font-semibold text-accent-600 dark:bg-accent-500/25 dark:text-accent-100">
                         {label}
                       </span>
                     ) : null;
@@ -110,7 +110,7 @@ export function ChatHistory({
                       <span className="max-w-[140px] truncate">{session.user_affected}</span>
                     </span>
                   ) : null}
-                  <span className="block text-xs text-gray-400">
+                  <span className="block text-xs text-gray-400 dark:text-gray-500">
                     {formatRelative(session.updated_at || session.created_at)}
                   </span>
                 </span>

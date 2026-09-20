@@ -50,16 +50,16 @@ export function OperatorIdentityGate() {
       aria-modal="true"
       aria-labelledby="operator-gate-title"
     >
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-navy-800">
         <div className="mb-4 flex items-center gap-3">
           <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
             <UserRound className="h-5 w-5" />
           </span>
           <div>
-            <h2 id="operator-gate-title" className="text-lg font-semibold text-gray-900">
+            <h2 id="operator-gate-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Support agent sign-in
             </h2>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               Identify yourself to use the L1 support assistant.
             </p>
           </div>
@@ -67,7 +67,7 @@ export function OperatorIdentityGate() {
 
         <form onSubmit={submit} className="space-y-4">
           <div>
-            <label htmlFor="op-name" className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="op-name" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
               Your name
             </label>
             <input
@@ -76,12 +76,12 @@ export function OperatorIdentityGate() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoComplete="name"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-200 dark:placeholder:text-gray-500"
               placeholder="Jane Doe"
             />
           </div>
           <div>
-            <label htmlFor="op-email" className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="op-email" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
               work email
             </label>
             <input
@@ -90,7 +90,7 @@ export function OperatorIdentityGate() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-200 dark:placeholder:text-gray-500"
               placeholder="jane.doe@example.com"
             />
           </div>
@@ -103,7 +103,7 @@ export function OperatorIdentityGate() {
           >
             Continue
           </button>
-          <p className="text-center text-xs text-gray-400">
+          <p className="text-center text-xs text-gray-400 dark:text-gray-500">
             Tickets you open will be filed under your email; the affected end user is recorded
             separately.
           </p>

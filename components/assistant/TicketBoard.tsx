@@ -95,19 +95,19 @@ export function TicketBoard({ onBack }: { onBack: () => void }) {
         Back
       </button>
 
-      <h2 className="text-lg font-semibold text-gray-800">Ticket Dashboard</h2>
+      <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Ticket Dashboard</h2>
 
       <div className="flex items-center gap-2">
         <input
           value={ticketSearch}
           onChange={(e) => setTicketSearch(e.target.value)}
           placeholder="Search tickets…"
-          className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-accent-400 focus:outline-none focus:ring-1 focus:ring-accent-400"
+          className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-accent-400 focus:outline-none focus:ring-1 focus:ring-accent-400 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-200 dark:placeholder:text-gray-500"
         />
         <select
           value={ticketSort}
           onChange={(e) => setTicketSort(e.target.value as 'newest' | 'oldest' | 'id')}
-          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-accent-400 focus:outline-none focus:ring-1 focus:ring-accent-400"
+          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-accent-400 focus:outline-none focus:ring-1 focus:ring-accent-400 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-200"
         >
           <option value="newest">Newest</option>
           <option value="oldest">Oldest</option>
@@ -121,15 +121,15 @@ export function TicketBoard({ onBack }: { onBack: () => void }) {
         ))}
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-gray-500">
+      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
         <span className={`rounded px-2 py-0.5 font-medium ${statusBadgeClass('open')}`}>
           Open {counts?.open ?? 0}
         </span>
-        <span className="text-gray-400">of {counts?.total ?? 0} total</span>
+        <span className="text-gray-400 dark:text-gray-500">of {counts?.total ?? 0} total</span>
       </div>
 
       {ticketsLoading && (
-        <p className="py-10 text-center text-sm text-gray-400">Loading tickets…</p>
+        <p className="py-10 text-center text-sm text-gray-400 dark:text-gray-500">Loading tickets…</p>
       )}
 
       {ticketsError && !ticketsLoading && (
@@ -139,7 +139,7 @@ export function TicketBoard({ onBack }: { onBack: () => void }) {
       )}
 
       {!ticketsLoading && openTickets.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-center text-gray-400">
+        <div className="flex flex-col items-center justify-center py-12 text-center text-gray-400 dark:text-gray-500">
           <Ticket className="mb-2 h-6 w-6" />
           <p className="text-sm">No open tickets</p>
         </div>
@@ -152,21 +152,21 @@ export function TicketBoard({ onBack }: { onBack: () => void }) {
             <div key={ticket.local_id}>
               <button
                 onClick={() => setSelectedTicketId(isSelected ? null : ticket.local_id)}
-                className={`group flex w-full items-center gap-3 rounded-xl border bg-white px-3 py-3 text-left transition-colors ${
+                className={`group flex w-full items-center gap-3 rounded-xl border bg-white px-3 py-3 text-left transition-colors dark:bg-navy-800 ${
                   isSelected
                     ? 'border-accent-400 bg-accent-50/40'
-                    : 'border-gray-200 hover:border-accent-400 hover:bg-accent-50/40'
+                    : 'border-gray-200 hover:border-accent-400 hover:bg-accent-50/40 dark:border-navy-700'
                 }`}
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-navy-700 dark:text-gray-400">
                   <Ticket className="h-4 w-4" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-gray-800">
+                  <span className="block truncate text-sm font-medium text-gray-800 dark:text-gray-200">
                     {ticket.title || ticket.local_id}
                   </span>
                   <span className="flex items-center gap-2">
-                    <span className="truncate text-xs text-gray-400">
+                    <span className="truncate text-xs text-gray-400 dark:text-gray-500">
                       {ticket.local_id}
                       {ticket.category ? ` · ${ticket.category}` : ''}
                     </span>
@@ -191,27 +191,27 @@ export function TicketBoard({ onBack }: { onBack: () => void }) {
               </button>
 
               {isSelected && (
-                <div className="mt-1 rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <div className="mt-1 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-navy-700 dark:bg-navy-800">
                   {ticket.description && (
-                    <p className="mb-3 whitespace-pre-wrap text-sm text-gray-700">
+                    <p className="mb-3 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
                       {ticket.description}
                     </p>
                   )}
                   <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                    <dt className="text-gray-400">Category</dt>
-                    <dd className="text-gray-700">{ticket.category ?? '—'}</dd>
-                    <dt className="text-gray-400">Intent</dt>
-                    <dd className="text-gray-700">{ticket.intent_type ?? '—'}</dd>
-                    <dt className="text-gray-400">Reported by</dt>
-                    <dd className="truncate text-gray-700">{ticket.reported_by ?? '—'}</dd>
-                    <dt className="text-gray-400">Affected user</dt>
-                    <dd className="truncate text-gray-700">{ticket.affected_user ?? '—'}</dd>
-                    <dt className="text-gray-400">Created</dt>
-                    <dd className="text-gray-700">{formatDate(ticket.created_at) || '—'}</dd>
+                    <dt className="text-gray-400 dark:text-gray-500">Category</dt>
+                    <dd className="text-gray-700 dark:text-gray-200">{ticket.category ?? '—'}</dd>
+                    <dt className="text-gray-400 dark:text-gray-500">Intent</dt>
+                    <dd className="text-gray-700 dark:text-gray-200">{ticket.intent_type ?? '—'}</dd>
+                    <dt className="text-gray-400 dark:text-gray-500">Reported by</dt>
+                    <dd className="truncate text-gray-700 dark:text-gray-200">{ticket.reported_by ?? '—'}</dd>
+                    <dt className="text-gray-400 dark:text-gray-500">Affected user</dt>
+                    <dd className="truncate text-gray-700 dark:text-gray-200">{ticket.affected_user ?? '—'}</dd>
+                    <dt className="text-gray-400 dark:text-gray-500">Created</dt>
+                    <dd className="text-gray-700 dark:text-gray-200">{formatDate(ticket.created_at) || '—'}</dd>
                   </dl>
                   <button
                     onClick={() => loadRawTicket(ticket.local_id)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-200 dark:hover:bg-navy-700"
                   >
                     <FileJson className="h-3.5 w-3.5" />
                     View Raw JSON

@@ -163,6 +163,13 @@ export class PlaybackQueue {
   private ctx: AudioContext | null = null;
   private cursor = 0;
   private live = new Set<AudioBufferSourceNode>();
+  // Whether audio is allowed to sound at all. Barge-in disarms; the next turn
+  // re-arms. Without this, `flush()` stops what is playing and the very next
+  // frame off the socket starts playing again — the assistant talks over the
+  // user who just interrupted it, which is what "it keeps talking over me"
+  // means in practice. Frames already in transit when VAD fired are exactly the
+  // ones this refuses.
+  private armed = true;
 
   private context(): AudioContext {
     if (!this.ctx || this.ctx.state === 'closed') {
@@ -173,6 +180,8 @@ export class PlaybackQueue {
   }
 
   enqueue(b64: string): void {
+    // Checked before decoding: an abandoned response should cost nothing.
+    if (!this.armed) return;
     const pcm = base64ToPcm16(b64);
     if (!pcm.length) return;
     const ctx = this.context();
@@ -192,8 +201,12 @@ export class PlaybackQueue {
     source.onended = () => this.live.delete(source);
   }
 
-  /** Barge-in: drop everything queued and stop what is already sounding. */
+  /**
+   * Barge-in: stop what is sounding, drop what is queued, and refuse what is
+   * still arriving until {@link arm} is called for the next turn.
+   */
   flush(): void {
+    this.armed = false;
     this.live.forEach((source) => {
       try {
         source.onended = null;
@@ -206,9 +219,25 @@ export class PlaybackQueue {
     this.cursor = 0;
   }
 
+  /**
+   * Allow audio to sound again, for a turn that is genuinely new.
+   *
+   * Called from every signal that can precede a response, not just one: a
+   * re-arm that never fires would leave the call permanently silent, which is
+   * worse than the bug this guard fixes.
+   */
+  arm(): void {
+    this.armed = true;
+  }
+
   /** True while assistant audio is still scheduled to play. */
   get speaking(): boolean {
     return this.live.size > 0;
+  }
+
+  /** Whether audio is currently allowed to sound (diagnostics and tests). */
+  get isArmed(): boolean {
+    return this.armed;
   }
 
   close(): void {
@@ -327,6 +356,8 @@ export class RealtimeSession {
 
     switch (envelope.type) {
       case 'ready':
+        // Re-arm 1 of 3 — a fresh session starts able to speak.
+        this.playback.arm();
         this.handlers.onReady?.(envelope as { thread_id?: string; session_id?: string });
         break;
       case 'user_transcript':
@@ -347,6 +378,13 @@ export class RealtimeSession {
         this.setState('listening');
         break;
       case 'speech_stopped':
+        // Re-arm 2 of 3, and the one that matters. Server VAD emits
+        // speech_started when the user begins and speech_stopped when they
+        // finish, and `create_response: true` means the next response follows
+        // this — so it is the actual turn boundary. Re-arming on a timer would
+        // guess, and re-arming on the next assistant_text would race the audio
+        // deltas, which are not ordered against it.
+        this.playback.arm();
         this.setState('thinking');
         break;
       case 'thinking':
@@ -375,6 +413,11 @@ export class RealtimeSession {
 
   /** Manual turn end, for a push-to-talk style control over a live session. */
   commit(): void {
+    // Re-arm 3 of 3: a manually ended turn also precedes a response, and this
+    // path never emits speech_stopped. Currently unreachable from the UI — no
+    // control calls commit() — but the guard belongs with the send, not with
+    // whoever wires a button to it later.
+    this.playback.arm();
     this.send({ type: 'commit' });
     this.setState('thinking');
   }

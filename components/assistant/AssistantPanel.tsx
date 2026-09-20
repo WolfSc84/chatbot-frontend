@@ -22,6 +22,7 @@ import { ChatInput } from './ChatInput';
 import { ChatHistory } from './ChatHistory';
 import { ExportMenu } from './ExportMenu';
 import { TicketBoard } from './TicketBoard';
+import { ThemeToggle } from '@/components/layout/ThemeToggle';
 
 export function AssistantPanel() {
   const {
@@ -84,7 +85,7 @@ export function AssistantPanel() {
       />
 
       <aside
-        className={`fixed inset-0 z-50 flex h-[100dvh] w-full max-w-none flex-col bg-gray-50 shadow-2xl transition-transform duration-300 ${
+        className={`fixed inset-0 z-50 flex h-[100dvh] w-full max-w-none flex-col bg-gray-50 shadow-2xl transition-transform duration-300 dark:bg-navy-900 ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         aria-hidden={!isOpen}
@@ -112,6 +113,7 @@ export function AssistantPanel() {
               >
                 {uiLang === 'en' ? 'EN' : 'ES'}
               </button>
+              <ThemeToggle label={t(uiLang, 'panel.theme')} />
               {IS_L1_SUPPORT_MODE && operatorEmail && (
                 <button
                   onClick={clearOperator}
@@ -194,8 +196,8 @@ export function AssistantPanel() {
             <ChatView messages={messages} streaming={streaming} />
           ) : (
             <>
-              <h2 className="text-xl font-bold text-gray-900">{t(uiLang, 'panel.homeTitle')}</h2>
-              <p className="mt-1 text-sm text-gray-500">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t(uiLang, 'panel.homeTitle')}</h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 {t(uiLang, 'panel.homeSubtitle')}
               </p>
 
@@ -209,7 +211,7 @@ export function AssistantPanel() {
                 </button>
                 <button
                   onClick={loadHistory}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-200 dark:hover:bg-navy-700"
                 >
                   <History className="h-3.5 w-3.5" />
                   {t(uiLang, 'panel.chatHistory')}
@@ -224,14 +226,14 @@ export function AssistantPanel() {
 
         {/* Status + input */}
         {showInput && (
-          <div className="mx-auto w-full max-w-3xl bg-white sm:px-2">
+          <div className="mx-auto w-full max-w-3xl bg-white sm:px-2 dark:bg-navy-800">
             {shareError && (
               <p className="mx-4 mt-2 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-600">
                 {shareError}
               </p>
             )}
             <div className="flex items-center justify-between px-4 pt-2 text-xs">
-              <span className="inline-flex items-center gap-1.5 text-gray-500">
+              <span className="inline-flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
                 <span
                   className={`h-2 w-2 rounded-full ${
                     streaming ? 'animate-pulse bg-accent-500' : 'bg-emerald-500'
@@ -242,7 +244,7 @@ export function AssistantPanel() {
               {view === 'chat' && (
                 <button
                   onClick={newChat}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-200 dark:hover:bg-navy-700"
                 >
                   <MessageSquarePlus className="h-4 w-4" />
                   {t(uiLang, 'panel.newChat')}

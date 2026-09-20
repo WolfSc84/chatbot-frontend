@@ -24,7 +24,7 @@ export function RawTicketModal({ data, loading, onClose }: RawTicketModalProps) 
       onClick={onClose}
     >
       <div
-        className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl"
+        className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between bg-navy-950 px-4 py-3 text-white">
@@ -39,12 +39,12 @@ export function RawTicketModal({ data, loading, onClose }: RawTicketModalProps) 
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-4 scroll-thin">
           {loading ? (
-            <p className="flex items-center justify-center gap-2 py-10 text-sm text-gray-400">
+            <p className="flex items-center justify-center gap-2 py-10 text-sm text-gray-400 dark:text-gray-500">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading…
             </p>
           ) : (
-            <pre className="whitespace-pre-wrap rounded-md bg-gray-50 p-3 font-mono text-xs text-gray-800">
+            <pre className="whitespace-pre-wrap rounded-md bg-gray-50 p-3 font-mono text-xs text-gray-800 dark:bg-navy-900 dark:text-gray-200">
               {JSON.stringify(data, null, 2)}
             </pre>
           )}

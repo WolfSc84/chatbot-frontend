@@ -48,10 +48,10 @@ export function EntityListPanel({
   }, [items, tab, query]);
 
   return (
-    <section className="flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <section className="flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-navy-700 dark:bg-navy-800">
       <header className="mb-3 flex items-center gap-2">
         <Icon className={`h-5 w-5 ${iconClassName}`} />
-        <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{title}</h2>
       </header>
 
       {/* Tabs */}
@@ -64,7 +64,7 @@ export function EntityListPanel({
             className={`rounded-full px-3 py-1 font-medium transition-colors ${
               tab === t.key
                 ? 'bg-navy-900 text-white'
-                : 'text-gray-500 hover:bg-gray-100'
+                : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-navy-700'
             }`}
           >
             {t.label}
@@ -79,7 +79,7 @@ export function EntityListPanel({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-md border border-gray-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-accent-400 focus:ring-1 focus:ring-accent-400"
+          className="w-full rounded-md border border-gray-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-accent-400 focus:ring-1 focus:ring-accent-400 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-100 dark:placeholder:text-gray-500"
         />
       </div>
 

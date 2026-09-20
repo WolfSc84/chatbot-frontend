@@ -17,6 +17,7 @@ const STRINGS: Record<string, { en: string; es: string }> = {
   },
   'panel.history': { en: 'Chat history', es: 'Historial de chat' },
   'panel.signOut': { en: 'Sign out', es: 'Cerrar sesión' },
+  'panel.theme': { en: 'Toggle dark mode', es: 'Cambiar modo oscuro' },
   'panel.export': { en: 'Export conversation', es: 'Exportar conversación' },
   'panel.share': { en: 'Share conversation by email', es: 'Compartir conversación por correo' },
   'panel.responding': { en: 'Responding…', es: 'Respondiendo…' },

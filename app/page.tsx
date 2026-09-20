@@ -11,12 +11,12 @@ export default function HomePage() {
       {/* Welcome header */}
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             Welcome Back, {CURRENT_USER.name}
           </h1>
-          <p className="mt-1 text-sm text-gray-500">Here&apos;s what&apos;s happening today</p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Here&apos;s what&apos;s happening today</p>
         </div>
-        <button className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+        <button className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-200 dark:hover:bg-navy-700">
           <LayoutGrid className="h-4 w-4" />
           Customize
         </button>

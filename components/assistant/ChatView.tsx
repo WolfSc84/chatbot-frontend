@@ -36,7 +36,7 @@ function ReportDownload({ report, lang }: { report: ReportAttachment; lang: Lang
 
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-2">
-      <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+      <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
         <Download className="h-3.5 w-3.5" />
         {t(lang, 'chat.downloadReport')}
       </span>
@@ -45,7 +45,7 @@ function ReportDownload({ report, lang }: { report: ReportAttachment; lang: Lang
           key={key}
           onClick={() => onDownload(key)}
           disabled={busy !== null}
-          className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-accent-300 hover:text-accent-600 disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-accent-300 hover:text-accent-600 disabled:opacity-60 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400"
         >
           {busy === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
           <span>{label}</span>
@@ -120,7 +120,7 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                 className={`rounded-2xl px-3.5 py-2.5 text-sm ${
                   isUser
                     ? 'whitespace-pre-wrap rounded-br-md bg-accent-500 text-white'
-                    : 'rounded-bl-md border border-gray-200 bg-white text-gray-800'
+                    : 'rounded-bl-md border border-gray-200 bg-white text-gray-800 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-200'
                 }`}
               >
                 {isUser ? (
@@ -147,7 +147,7 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                     className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
                       isPlaying
                         ? 'border-accent-200 bg-accent-50 text-accent-600 hover:bg-accent-100'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-accent-300 hover:text-accent-600'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-accent-300 hover:text-accent-600 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400'
                     }`}
                   >
                     {isLoadingAudio ? (

