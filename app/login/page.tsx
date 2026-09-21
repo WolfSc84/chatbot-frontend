@@ -27,6 +27,14 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       });
       if (res.ok) {
+        // Remembered only so the assistant can greet the user by name. The
+        // bearer never leaves the server; this is the same username they just
+        // typed, and storage refusing it simply means a nameless greeting.
+        try {
+          window.localStorage.setItem('assistant:username', username);
+        } catch {
+          /* private mode — greet without a name */
+        }
         router.replace('/');
         router.refresh();
         return;
