@@ -18,6 +18,7 @@ import { IS_L1_SUPPORT_MODE, IS_LOGIN_ENABLED } from '@/lib/flags';
 import type { Workspace } from '@/lib/types';
 import { WorkspaceList } from './WorkspaceList';
 import { ChatView } from './ChatView';
+import { MarkdownMessage } from './MarkdownMessage';
 import { ChatInput } from './ChatInput';
 import { ChatHistory } from './ChatHistory';
 import { ExportMenu } from './ExportMenu';
@@ -50,6 +51,7 @@ export function AssistantPanel() {
     operatorName,
     operatorEmail,
     clearOperator,
+    welcomeMessage,
   } = useAssistant();
 
   const [exportOpen, setExportOpen] = useState(false);
@@ -196,10 +198,24 @@ export function AssistantPanel() {
             <ChatView messages={messages} streaming={streaming} />
           ) : (
             <>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t(uiLang, 'panel.homeTitle')}</h2>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {t(uiLang, 'panel.homeSubtitle')}
-              </p>
+              {welcomeMessage ? (
+                // Greets by name, names the tenant's specialty, and says what it
+                // can do — instead of a generic heading. Rendered through the
+                // same Markdown component as every other assistant message, so
+                // it inherits the link allowlist and blocked images.
+                <div className="text-sm text-gray-700 dark:text-gray-200">
+                  <MarkdownMessage content={welcomeMessage} />
+                </div>
+              ) : (
+                <>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                    {t(uiLang, 'panel.homeTitle')}
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {t(uiLang, 'panel.homeSubtitle')}
+                  </p>
+                </>
+              )}
 
               <div className="my-4 flex items-center gap-2">
                 <button
