@@ -36,6 +36,7 @@ import {
   type RealtimeState,
 } from '@/lib/realtime';
 import { t, type Lang } from '@/lib/i18n';
+import { composeWelcome, firstNameOf } from '@/lib/welcome';
 import {
   readStoredMode,
   resolveOpeningMode,
@@ -110,6 +111,12 @@ interface AssistantContextValue {
 
   /** Which way the user is talking to us: typed, push-to-talk, or live voice. */
   inputMode: InputMode;
+  /**
+   * The greeting shown when a conversation has not started yet, or null.
+   * Presentation only — deliberately not a message, so it never enters the
+   * thread, the rebuilt history, or the summarizer.
+   */
+  welcomeMessage: string | null;
   /**
    * Switch input mode. Deliberately NOT a new conversation: the thread, the
    * message list and the scroll position all survive, because a mode is how you
@@ -898,14 +905,53 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     if (!autoStartLiveRef.current) return;
     if (inputMode !== 'live' || !product || !voiceAvailable) return;
     if (voiceSessionRef.current) return;
+    // Only into a genuinely new conversation. Opening the socket on top of an
+    // exchange already under way hijacks a conversation the user may have
+    // intended to type — the reason this was held back out of the mode work.
+    if (messages.length > 1) return;
     autoStartLiveRef.current = false;
     void startLiveVoice();
-  }, [inputMode, product, voiceAvailable, startLiveVoice]);
+  }, [inputMode, product, voiceAvailable, startLiveVoice, messages.length]);
 
   // Live voice turning out to be impossible must not strand the user in it.
   useEffect(() => {
     if (inputMode === 'live' && !voiceAvailable) setInputModeState('text');
   }, [inputMode, voiceAvailable]);
+
+  // ── Welcome ───────────────────────────────────────────────────────────────
+  // A new conversation should not open onto a generic panel. Composed locally
+  // from tenant config and the UI language: no model call, no latency, nothing
+  // to hallucinate, and identical wording every time.
+  //
+  // Exposed as presentation rather than pushed into `messages`. A greeting is
+  // framing, not a turn — keeping it out of the message list is what keeps it
+  // out of the thread, out of the history the checkpointer rebuilds, and out of
+  // the summarizer, by construction rather than by convention.
+  //
+  // Rollback lever: NEXT_PUBLIC_ASSISTANT_WELCOME=false restores the generic panel.
+  const welcomeEnabled = process.env.NEXT_PUBLIC_ASSISTANT_WELCOME !== 'false';
+  const [storedUsername, setStoredUsername] = useState('');
+  useEffect(() => {
+    try {
+      setStoredUsername(window.localStorage.getItem('assistant:username') ?? '');
+    } catch {
+      /* private mode — greet without a name */
+    }
+  }, []);
+
+  const welcomeMessage = useMemo(() => {
+    if (!welcomeEnabled || !product) return null;
+    // Only a conversation that has not started. Resuming one with history shows
+    // the conversation, not a greeting.
+    if (messages.length > 0) return null;
+    return composeWelcome({
+      lang: uiLang,
+      firstName: firstNameOf(storedUsername),
+      // The tenant's own display name, so the greeting names the active tenant
+      // and no other — switching tenant switches the greeting.
+      specialty: availableTenants.find((tenant) => tenant.id === product)?.label ?? product,
+    });
+  }, [welcomeEnabled, product, messages.length, uiLang, storedUsername, availableTenants]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -1068,6 +1114,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       stopLiveVoice,
       inputMode,
       setInputMode,
+      welcomeMessage,
       sendMessage,
       attachFile,
       saveReport,
@@ -1139,6 +1186,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       stopLiveVoice,
       inputMode,
       setInputMode,
+      welcomeMessage,
       sendMessage,
       attachFile,
       saveReport,
