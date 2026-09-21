@@ -170,6 +170,14 @@ export class PlaybackQueue {
   // means in practice. Frames already in transit when VAD fired are exactly the
   // ones this refuses.
   private armed = true;
+  // The assistant item currently sounding, and how much of it the user has
+  // actually heard. Barge-in reports this to the gateway so the model's context
+  // ends where the user's ears did — otherwise it believes it said the whole
+  // turn, including the part that was cut off, and a follow-up like "go back to
+  // the second step" is reasoned against words nobody heard.
+  private itemId: string | null = null;
+  private playedSeconds = 0;
+  private startedAt: number | null = null;
 
   private context(): AudioContext {
     if (!this.ctx || this.ctx.state === 'closed') {
@@ -179,9 +187,15 @@ export class PlaybackQueue {
     return this.ctx;
   }
 
-  enqueue(b64: string): void {
+  enqueue(b64: string, itemId?: string): void {
     // Checked before decoding: an abandoned response should cost nothing.
     if (!this.armed) return;
+    if (itemId && itemId !== this.itemId) {
+      // A new assistant item: start counting its audio from zero.
+      this.itemId = itemId;
+      this.playedSeconds = 0;
+      this.startedAt = null;
+    }
     const pcm = base64ToPcm16(b64);
     if (!pcm.length) return;
     const ctx = this.context();
@@ -196,6 +210,7 @@ export class PlaybackQueue {
     source.connect(ctx.destination);
     const startAt = Math.max(ctx.currentTime, this.cursor);
     source.start(startAt);
+    if (this.startedAt === null) this.startedAt = startAt;
     this.cursor = startAt + buffer.duration;
     this.live.add(source);
     source.onended = () => this.live.delete(source);
@@ -207,6 +222,16 @@ export class PlaybackQueue {
    */
   flush(): void {
     this.armed = false;
+    // Freeze how much was heard BEFORE stopping anything: measured from the
+    // audio clock rather than counting frames, because frames that were queued
+    // but never reached the speaker were never heard.
+    const ctx = this.ctx;
+    if (ctx && this.startedAt !== null) {
+      const heard = ctx.currentTime - this.startedAt;
+      // Never claim more was heard than was scheduled.
+      const scheduled = Math.max(0, this.cursor - this.startedAt);
+      this.playedSeconds = Math.max(0, Math.min(heard, scheduled));
+    }
     this.live.forEach((source) => {
       try {
         source.onended = null;
@@ -228,6 +253,15 @@ export class PlaybackQueue {
    */
   arm(): void {
     this.armed = true;
+  }
+
+  /**
+   * What the user actually heard of the current assistant item, for truncation.
+   * ``null`` when there is nothing to truncate — no item, or nothing sounded.
+   */
+  heardSoFar(): { itemId: string; playedMs: number } | null {
+    if (!this.itemId) return null;
+    return { itemId: this.itemId, playedMs: Math.round(this.playedSeconds * 1000) };
   }
 
   /** True while assistant audio is still scheduled to play. */
@@ -373,16 +407,34 @@ export class RealtimeSession {
         this.handlers.onAssistantText(String(envelope.text ?? ''), Boolean(envelope.final));
         break;
       case 'audio':
-        this.playback.enqueue(String(envelope.audio ?? ''));
+        this.playback.enqueue(
+          String(envelope.audio ?? ''),
+          typeof envelope.item_id === 'string' ? envelope.item_id : undefined,
+        );
         this.setState('speaking');
         break;
-      case 'speech_started':
+      case 'speech_started': {
         // Barge-in: the user talked over the assistant. Drop its audio now and
         // tell the server to abandon the response it was still generating.
+        //
+        // Read what was heard BEFORE flushing clears the count — flush() freezes
+        // the figure, so ask for it after.
         this.playback.flush();
+        const heard = this.playback.heardSoFar();
         this.send({ type: 'cancel' });
+        if (heard) {
+          // Cut the model's memory of the turn to what the user actually got,
+          // so an interruption becomes usable context rather than a turn the
+          // model believes it delivered in full.
+          this.send({
+            type: 'truncate',
+            item_id: heard.itemId,
+            audio_end_ms: heard.playedMs,
+          });
+        }
         this.setState('listening');
         break;
+      }
       case 'speech_stopped':
         // Re-arm 2 of 3, and the one that matters. Server VAD emits
         // speech_started when the user begins and speech_stopped when they
