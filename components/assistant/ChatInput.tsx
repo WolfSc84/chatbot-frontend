@@ -131,6 +131,7 @@ export function ChatInput() {
     voiceLevel: liveVoiceLevel,
     startLiveVoice,
     stopLiveVoice,
+    setInputMode,
   } = useAssistant();
   const liveVoiceOn = liveVoiceState !== 'idle' && liveVoiceState !== 'error';
   // The product (Sales / Knowledge Center) may only be chosen at the start of a
@@ -762,7 +763,10 @@ export function ChatInput() {
         {liveVoiceAvailable && (
           <button
             type="button"
-            onClick={liveVoiceOn ? stopLiveVoice : () => void startLiveVoice()}
+            // Go through the mode, not straight to the socket: that is what makes
+            // the choice survive to the next conversation. The context starts and
+            // stops the session as the mode changes.
+            onClick={() => setInputMode(liveVoiceOn ? 'text' : 'live')}
             disabled={!product || streaming || isRecording || isTranscribing || isCorrecting}
             aria-label={t(uiLang, liveVoiceOn ? 'input.liveStop' : 'input.liveStart')}
             aria-pressed={liveVoiceOn}
@@ -777,7 +781,16 @@ export function ChatInput() {
           </button>
         )}
         <button
-          onClick={isRecording ? stopRecording : () => void startRecording()}
+          onClick={
+            isRecording
+              ? stopRecording
+              : () => {
+                  // Remember that they reach for the mic, so the next
+                  // conversation opens push-to-talk rather than live voice.
+                  setInputMode('ptt');
+                  void startRecording();
+                }
+          }
           disabled={streaming || isTranscribing || isCorrecting || liveVoiceOn}
           aria-label={t(uiLang, isRecording ? 'input.voiceStop' : 'input.voiceStart')}
           title={t(uiLang, isRecording ? 'input.voiceStopTitle' : 'input.voiceStartTitle')}

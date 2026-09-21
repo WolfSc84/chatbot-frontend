@@ -36,6 +36,12 @@ import {
   type RealtimeState,
 } from '@/lib/realtime';
 import { t, type Lang } from '@/lib/i18n';
+import {
+  readStoredMode,
+  resolveOpeningMode,
+  storeMode,
+  type InputMode,
+} from '@/lib/inputMode';
 
 type AssistantStatus = 'ready' | 'streaming' | 'error';
 export type AssistantView = 'home' | 'chat' | 'history' | 'tickets';
@@ -101,6 +107,15 @@ interface AssistantContextValue {
   voiceLevel: number;
   startLiveVoice: () => Promise<void>;
   stopLiveVoice: () => void;
+
+  /** Which way the user is talking to us: typed, push-to-talk, or live voice. */
+  inputMode: InputMode;
+  /**
+   * Switch input mode. Deliberately NOT a new conversation: the thread, the
+   * message list and the scroll position all survive, because a mode is how you
+   * are talking, not what you are talking about.
+   */
+  setInputMode: (mode: InputMode) => void;
 
   sendMessage: (text: string) => Promise<void>;
   /** Sales-only: attach a file to the current conversation as session context. */
@@ -807,6 +822,81 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // Never leave a socket + mic open behind an unmounted widget.
   useEffect(() => stopLiveVoice, [stopLiveVoice]);
 
+  // ── Input mode ────────────────────────────────────────────────────────────
+  // Starts as text so the server render and the first client render agree; the
+  // remembered choice is applied in the effect below, once storage can be read.
+  const [inputMode, setInputModeState] = useState<InputMode>('text');
+  const modeResolvedRef = useRef(false);
+  // True only when 'live' is a choice the user actually made before, not merely
+  // the default. Auto-connecting a metered socket (and prompting for the
+  // microphone) is something to do for someone who asked for it, not for someone
+  // who has just opened a CRM page and may only want to type.
+  const autoStartLiveRef = useRef(false);
+
+  // Resolve the opening mode once per mount: remembered choice, else the
+  // deployment default, else live voice — degraded to text if live voice cannot
+  // run here. Availability is re-derived every open rather than remembered, so
+  // granting mic permission later is enough to get live voice back.
+  useEffect(() => {
+    if (modeResolvedRef.current) return;
+    modeResolvedRef.current = true;
+    const stored = readStoredMode();
+    autoStartLiveRef.current = stored === 'live';
+    setInputModeState(
+      resolveOpeningMode({
+        stored,
+        configuredDefault: process.env.NEXT_PUBLIC_DEFAULT_INPUT_MODE,
+        voiceAvailable,
+      }),
+    );
+    // Intentionally mount-only: a later change in voiceAvailable must not yank a
+    // user out of the mode they are currently using.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setInputMode = useCallback(
+    (mode: InputMode) => {
+      storeMode(mode);
+      setInputModeState(mode);
+      // Act on the mode asked for, never on a difference from the current one:
+      // the opening mode can already be 'live' while no socket is open, and a
+      // transition-based version of this made the live button a no-op in exactly
+      // that case. Both calls are idempotent — startLiveVoice returns early if a
+      // session exists, stopLiveVoice if one does not.
+      if (mode === 'live') {
+        void startLiveVoice();
+      } else {
+        stopLiveVoice();
+      }
+      // Nothing here touches threadIdRef, messages or view: switching how you
+      // talk must never restart what you are talking about.
+    },
+    [startLiveVoice, stopLiveVoice],
+  );
+
+  // Reopen live voice for someone who was last using it, once they pick a
+  // product (the session is tenant-scoped, so it cannot open before that).
+  //
+  // Deliberately NOT done for a first-time visitor, even though live voice is the
+  // nominal default: opening the socket the moment a product is selected hijacks
+  // a conversation the user may have intended to type — it regressed
+  // e2e/cross_mode_e2e.js by turning the harness's "start live voice" click into
+  // a stop. Entering live voice on a brand-new conversation belongs with the
+  // conversation-open event that Phase 8 introduces; until then the (prominent)
+  // button is one click away.
+  useEffect(() => {
+    if (!autoStartLiveRef.current) return;
+    if (inputMode !== 'live' || !product || !voiceAvailable) return;
+    if (voiceSessionRef.current) return;
+    autoStartLiveRef.current = false;
+    void startLiveVoice();
+  }, [inputMode, product, voiceAvailable, startLiveVoice]);
+
+  // Live voice turning out to be impossible must not strand the user in it.
+  useEffect(() => {
+    if (inputMode === 'live' && !voiceAvailable) setInputModeState('text');
+  }, [inputMode, voiceAvailable]);
+
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -966,6 +1056,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       voiceLevel,
       startLiveVoice,
       stopLiveVoice,
+      inputMode,
+      setInputMode,
       sendMessage,
       attachFile,
       saveReport,
@@ -1035,6 +1127,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       voiceLevel,
       startLiveVoice,
       stopLiveVoice,
+      inputMode,
+      setInputMode,
       sendMessage,
       attachFile,
       saveReport,
