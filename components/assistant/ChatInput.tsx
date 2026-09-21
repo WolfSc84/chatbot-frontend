@@ -131,6 +131,7 @@ export function ChatInput() {
     voiceLevel: liveVoiceLevel,
     startLiveVoice,
     stopLiveVoice,
+    setInputMode,
   } = useAssistant();
   const liveVoiceOn = liveVoiceState !== 'idle' && liveVoiceState !== 'error';
   // The product (Sales / Knowledge Center) may only be chosen at the start of a
@@ -667,7 +668,7 @@ export function ChatInput() {
   };
 
   return (
-    <div className="border-t border-gray-200 bg-white p-3">
+    <div className="border-t border-gray-200 bg-white p-3 dark:border-navy-700 dark:bg-navy-800">
       {sessionExpired && (
         <div
           role="alert"
@@ -682,7 +683,7 @@ export function ChatInput() {
           </a>
         </div>
       )}
-      <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-accent-400 focus-within:ring-1 focus-within:ring-accent-400">
+      <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-accent-400 focus-within:ring-1 focus-within:ring-accent-400 dark:border-navy-700 dark:bg-navy-900">
         <textarea
           ref={textareaRef}
           value={draft}
@@ -690,7 +691,7 @@ export function ChatInput() {
           onKeyDown={handleKeyDown}
           rows={1}
           placeholder={t(uiLang, 'input.placeholder')}
-          className="block max-h-32 w-full min-w-0 resize-none overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
+          className="block max-h-32 w-full min-w-0 resize-none overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500"
         />
         <div className="flex w-full flex-wrap items-center justify-end gap-2">
           {!productLocked && (
@@ -705,8 +706,8 @@ export function ChatInput() {
                 disabled={streaming || isRecording || isTranscribing || isCorrecting}
                 aria-label={t(uiLang, 'input.product')}
                 title={t(uiLang, 'input.selectTenant')}
-                className={`h-8 shrink-0 rounded-lg border bg-white px-2 text-xs font-medium outline-none transition-colors hover:border-accent-400 focus:border-accent-400 disabled:cursor-not-allowed disabled:opacity-40 ${
-                  product ? 'border-gray-200 text-gray-700' : 'border-rose-300 text-gray-500'
+                className={`h-8 shrink-0 rounded-lg border bg-white px-2 text-xs font-medium outline-none transition-colors hover:border-accent-400 focus:border-accent-400 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-navy-800 ${
+                  product ? 'border-gray-200 text-gray-700 dark:border-navy-700 dark:text-gray-200' : 'border-rose-300 text-gray-500 dark:text-gray-400'
                 }`}
               >
                 <option value="" disabled>
@@ -738,7 +739,7 @@ export function ChatInput() {
               disabled={streaming || isUploading || isRecording || isTranscribing || isCorrecting}
               aria-label={t(uiLang, 'input.attach')}
               title={t(uiLang, 'input.attachTitle')}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:border-accent-400 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:border-accent-400 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400"
             >
               <Paperclip className="h-4 w-4" />
             </button>
@@ -754,7 +755,7 @@ export function ChatInput() {
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
             grammarCheckEnabled
               ? 'border-accent-400 bg-accent-50 text-accent-600'
-              : 'border-gray-200 bg-white text-gray-400 hover:border-accent-400 hover:text-accent-700'
+              : 'border-gray-200 bg-white text-gray-400 hover:border-accent-400 hover:text-accent-700 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-500'
           }`}
         >
           <SpellCheck className="h-4 w-4" />
@@ -762,7 +763,10 @@ export function ChatInput() {
         {liveVoiceAvailable && (
           <button
             type="button"
-            onClick={liveVoiceOn ? stopLiveVoice : () => void startLiveVoice()}
+            // Go through the mode, not straight to the socket: that is what makes
+            // the choice survive to the next conversation. The context starts and
+            // stops the session as the mode changes.
+            onClick={() => setInputMode(liveVoiceOn ? 'text' : 'live')}
             disabled={!product || streaming || isRecording || isTranscribing || isCorrecting}
             aria-label={t(uiLang, liveVoiceOn ? 'input.liveStop' : 'input.liveStart')}
             aria-pressed={liveVoiceOn}
@@ -770,21 +774,30 @@ export function ChatInput() {
             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               liveVoiceOn
                 ? 'border-accent-400 bg-accent-50 text-accent-600'
-                : 'border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700'
+                : 'border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400'
             }`}
           >
             {liveVoiceOn ? <PhoneOff className="h-4 w-4" /> : <AudioLines className="h-4 w-4" />}
           </button>
         )}
         <button
-          onClick={isRecording ? stopRecording : () => void startRecording()}
+          onClick={
+            isRecording
+              ? stopRecording
+              : () => {
+                  // Remember that they reach for the mic, so the next
+                  // conversation opens push-to-talk rather than live voice.
+                  setInputMode('ptt');
+                  void startRecording();
+                }
+          }
           disabled={streaming || isTranscribing || isCorrecting || liveVoiceOn}
           aria-label={t(uiLang, isRecording ? 'input.voiceStop' : 'input.voiceStart')}
           title={t(uiLang, isRecording ? 'input.voiceStopTitle' : 'input.voiceStartTitle')}
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
             isRecording
               ? 'animate-pulse border-accent-400 bg-accent-50 text-accent-600'
-              : 'border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700'
+              : 'border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400'
           }`}
         >
           {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}

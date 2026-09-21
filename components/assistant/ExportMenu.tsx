@@ -44,17 +44,17 @@ export function ExportMenu({ onClose }: { onClose: () => void }) {
   return (
     <div
       ref={ref}
-      className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-gray-200 bg-white p-3 shadow-lg"
+      className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-gray-200 bg-white p-3 shadow-lg dark:border-navy-700 dark:bg-navy-800"
     >
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
         Export conversation
       </p>
 
-      <label className="mb-1 block text-xs font-medium text-gray-600">Format</label>
+      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Format</label>
       <select
         value={exportFormat}
         onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-        className="mb-3 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-accent-400 focus:outline-none focus:ring-1 focus:ring-accent-400"
+        className="mb-3 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-accent-400 focus:outline-none focus:ring-1 focus:ring-accent-400 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-200"
       >
         {FORMAT_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -68,7 +68,7 @@ export function ExportMenu({ onClose }: { onClose: () => void }) {
         className={`mb-3 inline-flex w-full items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
           selectionMode
             ? 'border-accent-400 bg-accent-50 text-accent-600'
-            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-200 dark:hover:bg-navy-700'
         }`}
       >
         <CheckSquare className="h-3.5 w-3.5" />

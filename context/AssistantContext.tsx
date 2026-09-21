@@ -36,6 +36,13 @@ import {
   type RealtimeState,
 } from '@/lib/realtime';
 import { t, type Lang } from '@/lib/i18n';
+import { composeWelcome, firstNameOf } from '@/lib/welcome';
+import {
+  readStoredMode,
+  resolveOpeningMode,
+  storeMode,
+  type InputMode,
+} from '@/lib/inputMode';
 
 type AssistantStatus = 'ready' | 'streaming' | 'error';
 export type AssistantView = 'home' | 'chat' | 'history' | 'tickets';
@@ -101,6 +108,21 @@ interface AssistantContextValue {
   voiceLevel: number;
   startLiveVoice: () => Promise<void>;
   stopLiveVoice: () => void;
+
+  /** Which way the user is talking to us: typed, push-to-talk, or live voice. */
+  inputMode: InputMode;
+  /**
+   * The greeting shown when a conversation has not started yet, or null.
+   * Presentation only — deliberately not a message, so it never enters the
+   * thread, the rebuilt history, or the summarizer.
+   */
+  welcomeMessage: string | null;
+  /**
+   * Switch input mode. Deliberately NOT a new conversation: the thread, the
+   * message list and the scroll position all survive, because a mode is how you
+   * are talking, not what you are talking about.
+   */
+  setInputMode: (mode: InputMode) => void;
 
   sendMessage: (text: string) => Promise<void>;
   /** Sales-only: attach a file to the current conversation as session context. */
@@ -764,6 +786,16 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         if (final) voiceTurnRef.current = null;
       },
       onActions: runHostActions,
+      // A draft the user is being asked to approve. It lands as an ordinary
+      // assistant message, so the existing MarkdownMessage renders it with its
+      // link allowlist and blocked images — no new renderer, no new dependency —
+      // and it survives switching out of voice mid-draft like any other message.
+      onCard: ({ markdown }) => {
+        setMessages((prev) => [
+          ...prev,
+          { id: `card-${Date.now()}`, role: 'assistant', content: markdown },
+        ]);
+      },
       onError: (message, recoverable) => {
         setVoiceError(message);
         if (!recoverable) stopLiveVoice();
@@ -806,6 +838,120 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
   // Never leave a socket + mic open behind an unmounted widget.
   useEffect(() => stopLiveVoice, [stopLiveVoice]);
+
+  // ── Input mode ────────────────────────────────────────────────────────────
+  // Starts as text so the server render and the first client render agree; the
+  // remembered choice is applied in the effect below, once storage can be read.
+  const [inputMode, setInputModeState] = useState<InputMode>('text');
+  const modeResolvedRef = useRef(false);
+  // True only when 'live' is a choice the user actually made before, not merely
+  // the default. Auto-connecting a metered socket (and prompting for the
+  // microphone) is something to do for someone who asked for it, not for someone
+  // who has just opened a CRM page and may only want to type.
+  const autoStartLiveRef = useRef(false);
+
+  // Resolve the opening mode once per mount: remembered choice, else the
+  // deployment default, else live voice — degraded to text if live voice cannot
+  // run here. Availability is re-derived every open rather than remembered, so
+  // granting mic permission later is enough to get live voice back.
+  useEffect(() => {
+    if (modeResolvedRef.current) return;
+    modeResolvedRef.current = true;
+    const stored = readStoredMode();
+    autoStartLiveRef.current = stored === 'live';
+    setInputModeState(
+      resolveOpeningMode({
+        stored,
+        configuredDefault: process.env.NEXT_PUBLIC_DEFAULT_INPUT_MODE,
+        voiceAvailable,
+      }),
+    );
+    // Intentionally mount-only: a later change in voiceAvailable must not yank a
+    // user out of the mode they are currently using.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setInputMode = useCallback(
+    (mode: InputMode) => {
+      storeMode(mode);
+      setInputModeState(mode);
+      // Act on the mode asked for, never on a difference from the current one:
+      // the opening mode can already be 'live' while no socket is open, and a
+      // transition-based version of this made the live button a no-op in exactly
+      // that case. Both calls are idempotent — startLiveVoice returns early if a
+      // session exists, stopLiveVoice if one does not.
+      if (mode === 'live') {
+        void startLiveVoice();
+      } else {
+        stopLiveVoice();
+      }
+      // Nothing here touches threadIdRef, messages or view: switching how you
+      // talk must never restart what you are talking about.
+    },
+    [startLiveVoice, stopLiveVoice],
+  );
+
+  // Reopen live voice for someone who was last using it, once they pick a
+  // product (the session is tenant-scoped, so it cannot open before that).
+  //
+  // Deliberately NOT done for a first-time visitor, even though live voice is the
+  // nominal default: opening the socket the moment a product is selected hijacks
+  // a conversation the user may have intended to type — it regressed
+  // e2e/cross_mode_e2e.js by turning the harness's "start live voice" click into
+  // a stop. Entering live voice on a brand-new conversation belongs with the
+  // conversation-open event that Phase 8 introduces; until then the (prominent)
+  // button is one click away.
+  useEffect(() => {
+    if (!autoStartLiveRef.current) return;
+    if (inputMode !== 'live' || !product || !voiceAvailable) return;
+    if (voiceSessionRef.current) return;
+    // Only into a genuinely new conversation. Opening the socket on top of an
+    // exchange already under way hijacks a conversation the user may have
+    // intended to type — the reason this was held back out of the mode work.
+    if (messages.length > 1) return;
+    autoStartLiveRef.current = false;
+    void startLiveVoice();
+  }, [inputMode, product, voiceAvailable, startLiveVoice, messages.length]);
+
+  // Live voice turning out to be impossible must not strand the user in it.
+  useEffect(() => {
+    if (inputMode === 'live' && !voiceAvailable) setInputModeState('text');
+  }, [inputMode, voiceAvailable]);
+
+  // ── Welcome ───────────────────────────────────────────────────────────────
+  // A new conversation should not open onto a generic panel. Composed locally
+  // from tenant config and the UI language: no model call, no latency, nothing
+  // to hallucinate, and identical wording every time.
+  //
+  // Exposed as presentation rather than pushed into `messages`. A greeting is
+  // framing, not a turn — keeping it out of the message list is what keeps it
+  // out of the thread, out of the history the checkpointer rebuilds, and out of
+  // the summarizer, by construction rather than by convention.
+  //
+  // Rollback lever: NEXT_PUBLIC_ASSISTANT_WELCOME=false restores the generic panel.
+  const welcomeEnabled = process.env.NEXT_PUBLIC_ASSISTANT_WELCOME !== 'false';
+  const [storedUsername, setStoredUsername] = useState('');
+  useEffect(() => {
+    try {
+      setStoredUsername(window.localStorage.getItem('assistant:username') ?? '');
+    } catch {
+      /* private mode — greet without a name */
+    }
+  }, []);
+
+  const welcomeMessage = useMemo(() => {
+    if (!welcomeEnabled || !product) return null;
+    // Only a conversation that has not started. Resuming one with history shows
+    // the conversation, not a greeting.
+    if (messages.length > 0) return null;
+    return composeWelcome({
+      lang: uiLang,
+      firstName: firstNameOf(storedUsername),
+      // The tenant's own display name, so the greeting names the active tenant
+      // and no other — switching tenant switches the greeting.
+      specialty: availableTenants.find((tenant) => tenant.id === product)?.label ?? product,
+    });
+  }, [welcomeEnabled, product, messages.length, uiLang, storedUsername, availableTenants]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -966,6 +1112,9 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       voiceLevel,
       startLiveVoice,
       stopLiveVoice,
+      inputMode,
+      setInputMode,
+      welcomeMessage,
       sendMessage,
       attachFile,
       saveReport,
@@ -1035,6 +1184,9 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       voiceLevel,
       startLiveVoice,
       stopLiveVoice,
+      inputMode,
+      setInputMode,
+      welcomeMessage,
       sendMessage,
       attachFile,
       saveReport,

@@ -27,6 +27,14 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       });
       if (res.ok) {
+        // Remembered only so the assistant can greet the user by name. The
+        // bearer never leaves the server; this is the same username they just
+        // typed, and storage refusing it simply means a nameless greeting.
+        try {
+          window.localStorage.setItem('assistant:username', username);
+        } catch {
+          /* private mode — greet without a name */
+        }
         router.replace('/');
         router.refresh();
         return;
@@ -40,15 +48,15 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center bg-gray-50 px-4">
+    <main className="flex min-h-[100dvh] items-center justify-center bg-gray-50 px-4 dark:bg-navy-950">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm rounded-xl bg-white p-8 shadow-lg ring-1 ring-gray-200"
+        className="w-full max-w-sm rounded-xl bg-white p-8 shadow-lg ring-1 ring-gray-200 dark:bg-navy-900 dark:ring-navy-700"
       >
-        <h1 className="text-xl font-bold text-gray-900">Sign in</h1>
-        <p className="mt-1 text-sm text-gray-500">Enter your credentials to continue.</p>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Sign in</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Enter your credentials to continue.</p>
 
-        <label className="mt-6 block text-sm font-medium text-gray-700" htmlFor="username">
+        <label className="mt-6 block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="username">
           Username
         </label>
         <input
@@ -59,10 +67,10 @@ export default function LoginPage() {
           required
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500"
+          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-100"
         />
 
-        <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="password">
+        <label className="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="password">
           Password
         </label>
         <input
@@ -73,7 +81,7 @@ export default function LoginPage() {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500"
+          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-100"
         />
 
         {error && (

@@ -21,3 +21,6 @@ CLAUDE.md
 
 #graphify
 graphify-out/
+
+# dev server logs
+*.log
