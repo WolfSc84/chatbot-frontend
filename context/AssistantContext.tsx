@@ -779,6 +779,16 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         if (final) voiceTurnRef.current = null;
       },
       onActions: runHostActions,
+      // A draft the user is being asked to approve. It lands as an ordinary
+      // assistant message, so the existing MarkdownMessage renders it with its
+      // link allowlist and blocked images — no new renderer, no new dependency —
+      // and it survives switching out of voice mid-draft like any other message.
+      onCard: ({ markdown }) => {
+        setMessages((prev) => [
+          ...prev,
+          { id: `card-${Date.now()}`, role: 'assistant', content: markdown },
+        ]);
+      },
       onError: (message, recoverable) => {
         setVoiceError(message);
         if (!recoverable) stopLiveVoice();
