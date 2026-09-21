@@ -267,6 +267,12 @@ export interface RealtimeHandlers {
   onAssistantText: (text: string, final: boolean) => void;
   /** Host-page actions relayed from the graph (navigate, highlight, …). */
   onActions?: (actions: unknown[]) => void;
+  /**
+   * Displayable content accompanying the speech — a ticket draft today. A
+   * Markdown table cannot be read aloud usefully, so the spoken channel
+   * summarizes it and the panel shows it.
+   */
+  onCard?: (card: { kind: string; markdown: string }) => void;
   onReady?: (info: { thread_id?: string; session_id?: string }) => void;
   onError: (message: string, recoverable: boolean) => void;
 }
@@ -393,6 +399,16 @@ export class RealtimeSession {
       case 'actions':
         this.handlers.onActions?.((envelope.actions as unknown[]) ?? []);
         break;
+      case 'assistant_card': {
+        const markdown = typeof envelope.markdown === 'string' ? envelope.markdown : '';
+        if (markdown.trim()) {
+          this.handlers.onCard?.({
+            kind: String(envelope.kind ?? 'unknown'),
+            markdown,
+          });
+        }
+        break;
+      }
       case 'error':
         this.handlers.onError(
           String(envelope.message ?? 'Live voice failed.'),
