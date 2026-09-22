@@ -118,6 +118,11 @@ const STRINGS: Record<string, { en: string; es: string }> = {
   },
 
   // Chat view (audio controls / typing)
+  // Speaker attribution. Shown as text beside each message's icon so the speaker
+  // is identifiable without relying on colour or alignment — which carry nothing
+  // when the transcript is exported, copied, or read by a screen reader.
+  'chat.speakerYou': { en: 'You', es: 'Tú' },
+  'chat.speakerAssistant': { en: 'Assistant', es: 'Asistente' },
   'chat.typing': { en: 'Assistant is responding', es: 'El asistente está respondiendo' },
   'chat.listen': { en: 'Listen', es: 'Escuchar' },
   'chat.stopAudio': { en: 'Stop audio', es: 'Detener audio' },

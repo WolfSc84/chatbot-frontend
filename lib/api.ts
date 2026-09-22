@@ -330,6 +330,8 @@ export async function listSessions(limit = 50, product?: string | null): Promise
 export interface TenantOption {
   id: string;
   label: string;
+  /** The assistant's own name for this tenant, used to attribute its turns. */
+  assistantName?: string;
 }
 
 /** Thrown when the backend rejects a call with 401 — the session is dead and the
@@ -372,8 +374,15 @@ export async function getTenants(): Promise<TenantOption[]> {
   }
   if (response.status === 401) throw new SessionExpiredError();
   if (!response.ok) throw new TenantsUnavailableError(response.status);
-  const data = (await response.json()) as { tenants?: { id: string; display_name?: string }[] };
-  return (data.tenants ?? []).map((t) => ({ id: t.id, label: t.display_name || t.id }));
+  const data = (await response.json()) as {
+    tenants?: { id: string; display_name?: string; assistant_name?: string }[];
+  };
+  return (data.tenants ?? []).map((t) => ({
+    id: t.id,
+    label: t.display_name || t.id,
+    // Absent on an older core; the UI falls back to a localized generic label.
+    assistantName: t.assistant_name,
+  }));
 }
 
 /** Derive the tenant from the `tenant::…` session-id prefix (fallback tag). */
@@ -707,6 +716,13 @@ export interface RealtimeTicket {
   expires_in: number;
   thread_id: string;
   socket_url: string;
+  /**
+   * Microphone energy gate for this session (normalised RMS, 0..1). Served per
+   * mint so an operator can retune it without a frontend rebuild — a
+   * NEXT_PUBLIC_* value is inlined at build time and could not. Absent on an
+   * older core, which reads as 0: gate off, pre-gate behaviour.
+   */
+  mic_energy_floor?: number;
 }
 
 /** Raised when live voice is switched off backend-side (core answers 404). */
