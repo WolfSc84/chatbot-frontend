@@ -342,21 +342,36 @@ export class SessionExpiredError extends Error {
   }
 }
 
+/** A tenant fetch that failed for a reason worth retrying (not an auth problem). */
+export class TenantsUnavailableError extends Error {
+  constructor(readonly status: number | null) {
+    super(`Tenant discovery failed${status === null ? '' : ` (HTTP ${status})`}`);
+    this.name = 'TenantsUnavailableError';
+  }
+}
+
 /**
  * Fetch the tenants the authenticated user may select (dynamic, backend-driven).
  * Onboarding a tenant needs no frontend change. Throws SessionExpiredError on 401
- * (session dead → prompt re-login); returns [] on network error / genuine empty so
- * the UI still degrades gracefully (the backend also fail-closed authorizes each request).
+ * (session dead → prompt re-login) and TenantsUnavailableError on anything else
+ * that failed.
+ *
+ * It used to return [] for every non-401 failure, which the caller could not tell
+ * apart from "this user has no tenants" — so one transient 500/503/429 or dropped
+ * connection left the product selector permanently empty until the page was
+ * reloaded. That is reachable in normal use: ca-ai-core's lifespan blocks on
+ * ca-agentic being ready before it serves, so a login immediately after starting
+ * the stack lands in exactly that window. An empty list now means empty.
  */
 export async function getTenants(): Promise<TenantOption[]> {
   let response: Response;
   try {
     response = await fetch(TENANTS_URL, { method: 'GET', cache: 'no-store' });
   } catch {
-    return []; // network error — not an auth problem
+    throw new TenantsUnavailableError(null); // network error — not an auth problem
   }
   if (response.status === 401) throw new SessionExpiredError();
-  if (!response.ok) return [];
+  if (!response.ok) throw new TenantsUnavailableError(response.status);
   const data = (await response.json()) as { tenants?: { id: string; display_name?: string }[] };
   return (data.tenants ?? []).map((t) => ({ id: t.id, label: t.display_name || t.id }));
 }

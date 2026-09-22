@@ -42,6 +42,7 @@ const STRINGS: Record<string, { en: string; es: string }> = {
   'input.product': { en: 'Product (required)', es: 'Producto (obligatorio)' },
   'input.selectTenant': { en: 'Select tenant', es: 'Seleccionar producto' },
   'input.selectTenantOption': { en: 'Select tenant…', es: 'Selecciona un producto…' },
+  'input.loadingTenants': { en: 'Loading tenants…', es: 'Cargando productos…' },
   'input.grammarEnable': { en: 'Enable grammar check', es: 'Activar corrección gramatical' },
   'input.grammarDisable': { en: 'Disable grammar check', es: 'Desactivar corrección gramatical' },
   'input.grammarOnTitle': {

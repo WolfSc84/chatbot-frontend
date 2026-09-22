@@ -121,6 +121,7 @@ export function ChatInput() {
     product,
     setProduct,
     availableTenants,
+    tenantsLoading,
     sessionExpired,
     messages,
     uiLang,
@@ -703,7 +704,9 @@ export function ChatInput() {
                 id="product-selection"
                 value={product ?? ''}
                 onChange={(e) => setProduct((e.target.value || null) as ProductSelection | null)}
-                disabled={streaming || isRecording || isTranscribing || isCorrecting}
+                disabled={
+                  streaming || isRecording || isTranscribing || isCorrecting || tenantsLoading
+                }
                 aria-label={t(uiLang, 'input.product')}
                 title={t(uiLang, 'input.selectTenant')}
                 className={`h-8 shrink-0 rounded-lg border bg-white px-2 text-xs font-medium outline-none transition-colors hover:border-accent-400 focus:border-accent-400 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-navy-800 ${
@@ -711,7 +714,7 @@ export function ChatInput() {
                 }`}
               >
                 <option value="" disabled>
-                  {t(uiLang, 'input.selectTenantOption')}
+                  {t(uiLang, tenantsLoading ? 'input.loadingTenants' : 'input.selectTenantOption')}
                 </option>
                 {availableTenants.map((opt) => (
                   <option key={opt.id} value={opt.id}>

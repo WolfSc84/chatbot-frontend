@@ -72,6 +72,8 @@ interface AssistantContextValue {
   setProduct: (product: ProductSelection | null) => void;
   /** Tenants the current user may select (dynamic, backend-driven). */
   availableTenants: TenantOption[];
+  /** Tenant discovery still in flight — distinct from "loaded and empty". */
+  tenantsLoading: boolean;
   /** True when tenant discovery got a 401 — the session died; prompt a re-login. */
   sessionExpired: boolean;
 
@@ -255,6 +257,13 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+// Tenant discovery is retried: ca-ai-core's lifespan blocks on the agent tier being
+// ready before it serves, so a login immediately after the stack starts can arrive
+// while /tenants is still refusing connections. Three tries over ~1.2s covers that
+// without making a genuinely empty list feel slow.
+const TENANT_FETCH_ATTEMPTS = 3;
+const TENANT_RETRY_BACKOFF_MS = 400;
+
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(true);
@@ -284,20 +293,51 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
   const [product, setProduct] = useState<ProductSelection | null>(null);
   const [availableTenants, setAvailableTenants] = useState<TenantOption[]>([]);
+  // Distinct from "loaded and empty": without it the selector renders the same
+  // bare placeholder while in flight, after a failure, and for a user with no
+  // tenants — three very different situations that looked identical.
+  const [tenantsLoading, setTenantsLoading] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
 
   // Discover the tenants this user may select (dynamic, backend-driven). Fetched
   // once on mount so onboarding a tenant needs no frontend change. A 401 here means
   // the session expired on an already-open tab — surface it instead of a dead dropdown.
+  //
+  // Retried, because this used to fail silently into a permanently empty product
+  // selector: one transient 500/503/429 or dropped connection wrote [] into state and
+  // nothing ever asked again, so only a page reload fixed it. The window is real —
+  // ca-ai-core's lifespan waits for the agent tier before it serves, so a login right
+  // after the stack starts lands in it.
   useEffect(() => {
     let cancelled = false;
-    getTenants()
-      .then((tenants) => {
-        if (!cancelled) setAvailableTenants(tenants);
-      })
-      .catch((err) => {
-        if (!cancelled && err instanceof SessionExpiredError) setSessionExpired(true);
-      });
+
+    (async () => {
+      for (let attempt = 1; attempt <= TENANT_FETCH_ATTEMPTS; attempt++) {
+        try {
+          const tenants = await getTenants();
+          if (!cancelled) {
+            setAvailableTenants(tenants);
+            setTenantsLoading(false);
+          }
+          return;
+        } catch (err) {
+          if (cancelled) return;
+          if (err instanceof SessionExpiredError) {
+            setSessionExpired(true);
+            setTenantsLoading(false);
+            return;
+          }
+          if (attempt === TENANT_FETCH_ATTEMPTS) {
+            // Give up and show the empty state. A user entitled to nothing must
+            // land on an empty list, never on a spinner that never resolves.
+            setTenantsLoading(false);
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, TENANT_RETRY_BACKOFF_MS * attempt));
+        }
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
@@ -1088,6 +1128,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       product,
       setProduct,
       availableTenants,
+      tenantsLoading,
       sessionExpired,
       operatorName,
       operatorEmail,
@@ -1161,6 +1202,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       setUiLang,
       product,
       availableTenants,
+      tenantsLoading,
       sessionExpired,
       operatorName,
       operatorEmail,
