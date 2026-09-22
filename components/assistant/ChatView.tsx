@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Download, FileSpreadsheet, FileText, Image as ImageIcon, Loader2, Pause, Volume2 } from 'lucide-react';
+import { Bot, Download, FileSpreadsheet, FileText, Image as ImageIcon, Loader2, Pause, User, Volume2 } from 'lucide-react';
 import { useAssistant } from '@/context/AssistantContext';
 import { t, type Lang } from '@/lib/i18n';
 import type { ChatMessage, ReportAttachment } from '@/lib/types';
@@ -76,6 +76,7 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const {
     uiLang,
+    assistantName,
     playingMessageId,
     audioLoadingId,
     audioError,
@@ -84,6 +85,11 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
     selectedExportIds,
     toggleExportSelection,
   } = useAssistant();
+
+  // The assistant's own name for this tenant, falling back to the localized
+  // generic. A tenant that rebrands should not need a rebuild to be named
+  // correctly in its own transcript.
+  const assistantLabel = assistantName?.trim() || t(uiLang, 'chat.speakerAssistant');
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -110,12 +116,29 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                 className="mr-2 mt-2.5 h-4 w-4 shrink-0 accent-accent-500"
               />
             )}
-            {!isUser && (
-              <span className="mr-2 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-500/15 text-accent-500">
-                <Bot className="h-4 w-4" />
-              </span>
-            )}
             <div className={`flex max-w-[80%] flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+              {/*
+                Explicit speaker attribution, both roles. Alignment and colour alone
+                identify nobody once the transcript is exported, copied, or read
+                aloud — and a spoken turn appears without the user having typed, so
+                "who said this" should never need inferring.
+              */}
+              <div
+                className={`mb-1 flex items-center gap-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400 ${
+                  isUser ? 'flex-row-reverse' : ''
+                }`}
+              >
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                    isUser
+                      ? 'bg-gray-200 text-gray-600 dark:bg-navy-700 dark:text-gray-300'
+                      : 'bg-accent-500/15 text-accent-500'
+                  }`}
+                >
+                  {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
+                </span>
+                <span>{isUser ? t(uiLang, 'chat.speakerYou') : assistantLabel}</span>
+              </div>
               <div
                 className={`rounded-2xl px-3.5 py-2.5 text-sm ${
                   isUser

@@ -72,6 +72,8 @@ interface AssistantContextValue {
   setProduct: (product: ProductSelection | null) => void;
   /** Tenants the current user may select (dynamic, backend-driven). */
   availableTenants: TenantOption[];
+  /** The active tenant's assistant name, for speaker attribution. */
+  assistantName: string | null;
   /** Tenant discovery still in flight — distinct from "loaded and empty". */
   tenantsLoading: boolean;
   /** True when tenant discovery got a 401 — the session died; prompt a re-login. */
@@ -293,6 +295,11 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
   const [product, setProduct] = useState<ProductSelection | null>(null);
   const [availableTenants, setAvailableTenants] = useState<TenantOption[]>([]);
+  // The active tenant's own name for its assistant, used to attribute its turns in
+  // the transcript. Null while tenants load, or when a tenant sets none — the view
+  // falls back to a localized generic label rather than showing nothing.
+  const assistantName =
+    availableTenants.find((tenant) => tenant.id === product)?.assistantName?.trim() || null;
   // Distinct from "loaded and empty": without it the selector renders the same
   // bare placeholder while in flight, after a failure, and for a user with no
   // tenants — three very different situations that looked identical.
@@ -387,6 +394,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const voiceSessionRef = useRef<RealtimeSession | null>(null);
   // Ids of the message pair the current spoken turn is filling in.
   const voiceTurnRef = useRef<{ user: string; assistant: string } | null>(null);
+  // Set when a card has already put this turn's answer on screen, so the model's
+  // spoken restatement of that same answer must not become a second message.
+  // Cleared when the turn closes (final text, barge-in, or hang-up).
+  const voiceCardSupersedesRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
 
@@ -788,6 +799,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     voiceSessionRef.current?.stop();
     voiceSessionRef.current = null;
     voiceTurnRef.current = null;
+    voiceCardSupersedesRef.current = false;
     setVoiceLevel(0);
   }, []);
 
@@ -821,6 +833,16 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         writeVoiceText(ensureVoiceTurn().user, text, final);
       },
       onAssistantText: (text, final) => {
+        // A superseding card already showed this answer; the model is only saying
+        // it out loud. Drop the text (the audio envelope is separate and still
+        // plays) rather than writing a duplicate message.
+        if (voiceCardSupersedesRef.current) {
+          if (final) {
+            voiceCardSupersedesRef.current = false;
+            voiceTurnRef.current = null;
+          }
+          return;
+        }
         writeVoiceText(ensureVoiceTurn().assistant, text, final);
         // Final assistant text closes the turn; the next transcript starts a new pair.
         if (final) voiceTurnRef.current = null;
@@ -830,7 +852,17 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       // assistant message, so the existing MarkdownMessage renders it with its
       // link allowlist and blocked images — no new renderer, no new dependency —
       // and it survives switching out of voice mid-draft like any other message.
-      onCard: ({ markdown }) => {
+      onCard: ({ markdown, supersedesText }) => {
+        const open = voiceTurnRef.current;
+        if (supersedesText && open) {
+          // The turn already owns an assistant bubble — fill it rather than
+          // appending, or the turn is left showing an empty bubble beside the card.
+          writeVoiceText(open.assistant, markdown, true);
+          voiceTurnRef.current = null;
+          voiceCardSupersedesRef.current = true;
+          return;
+        }
+        if (supersedesText) voiceCardSupersedesRef.current = true;
         setMessages((prev) => [
           ...prev,
           { id: `card-${Date.now()}`, role: 'assistant', content: markdown },
@@ -1128,6 +1160,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       product,
       setProduct,
       availableTenants,
+      assistantName,
       tenantsLoading,
       sessionExpired,
       operatorName,
@@ -1202,6 +1235,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       setUiLang,
       product,
       availableTenants,
+      assistantName,
       tenantsLoading,
       sessionExpired,
       operatorName,
