@@ -36,7 +36,6 @@ import {
   type RealtimeState,
 } from '@/lib/realtime';
 import { t, type Lang } from '@/lib/i18n';
-import { composeWelcome, firstNameOf } from '@/lib/welcome';
 import {
   readStoredMode,
   resolveOpeningMode,
@@ -124,7 +123,6 @@ interface AssistantContextValue {
    * Presentation only — deliberately not a message, so it never enters the
    * thread, the rebuilt history, or the summarizer.
    */
-  welcomeMessage: string | null;
   /**
    * Switch input mode. Deliberately NOT a new conversation: the thread, the
    * message list and the scroll position all survive, because a mode is how you
@@ -1005,42 +1003,6 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     if (inputMode === 'live' && !voiceAvailable) setInputModeState('text');
   }, [inputMode, voiceAvailable]);
 
-  // ── Welcome ───────────────────────────────────────────────────────────────
-  // A new conversation should not open onto a generic panel. Composed locally
-  // from tenant config and the UI language: no model call, no latency, nothing
-  // to hallucinate, and identical wording every time.
-  //
-  // Exposed as presentation rather than pushed into `messages`. A greeting is
-  // framing, not a turn — keeping it out of the message list is what keeps it
-  // out of the thread, out of the history the checkpointer rebuilds, and out of
-  // the summarizer, by construction rather than by convention.
-  //
-  // Default off: the assistant opens quietly and waits for the user rather than
-  // posting an unsolicited greeting. Opt back in with NEXT_PUBLIC_ASSISTANT_WELCOME=true.
-  const welcomeEnabled = process.env.NEXT_PUBLIC_ASSISTANT_WELCOME === 'true';
-  const [storedUsername, setStoredUsername] = useState('');
-  useEffect(() => {
-    try {
-      setStoredUsername(window.localStorage.getItem('assistant:username') ?? '');
-    } catch {
-      /* private mode — greet without a name */
-    }
-  }, []);
-
-  const welcomeMessage = useMemo(() => {
-    if (!welcomeEnabled || !product) return null;
-    // Only a conversation that has not started. Resuming one with history shows
-    // the conversation, not a greeting.
-    if (messages.length > 0) return null;
-    return composeWelcome({
-      lang: uiLang,
-      firstName: firstNameOf(storedUsername),
-      // The tenant's own display name, so the greeting names the active tenant
-      // and no other — switching tenant switches the greeting.
-      specialty: availableTenants.find((tenant) => tenant.id === product)?.label ?? product,
-    });
-  }, [welcomeEnabled, product, messages.length, uiLang, storedUsername, availableTenants]);
-
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -1206,7 +1168,6 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       toggleVoiceMute,
       inputMode,
       setInputMode,
-      welcomeMessage,
       sendMessage,
       attachFile,
       saveReport,
@@ -1282,7 +1243,6 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       toggleVoiceMute,
       inputMode,
       setInputMode,
-      welcomeMessage,
       sendMessage,
       attachFile,
       saveReport,
