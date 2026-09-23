@@ -61,6 +61,17 @@ const STRINGS: Record<string, { en: string; es: string }> = {
     es: 'Habla con el asistente sin usar las manos',
   },
   'input.liveStopTitle': { en: 'Hang up', es: 'Colgar' },
+  // Live-voice mic mute — the push-to-talk button doubles as the mute toggle
+  'input.liveMute': { en: 'Mute microphone', es: 'Silenciar micrófono' },
+  'input.liveUnmute': { en: 'Unmute microphone', es: 'Activar micrófono' },
+  'input.liveMuteTitle': {
+    en: 'Muted — tap to talk',
+    es: 'Silenciado: toca para hablar',
+  },
+  'input.liveUnmuteTitle': {
+    en: 'Live — tap to mute',
+    es: 'En vivo: toca para silenciar',
+  },
   'input.liveOff': {
     en: 'Live voice is turned off. Push-to-talk is still available.',
     es: 'La voz en vivo está desactivada. Aún puedes usar pulsar para hablar.',

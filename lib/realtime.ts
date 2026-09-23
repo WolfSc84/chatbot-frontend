@@ -242,6 +242,14 @@ export class PlaybackQueue {
   private itemId: string | null = null;
   private playedSeconds = 0;
   private startedAt: number | null = null;
+  // Sum of the actual decoded audio DURATION received for the current item — the
+  // real length of what the gateway generated. The scheduled timeline
+  // (`cursor - startedAt`) is not this: on a playback underrun each new buffer is
+  // scheduled at `max(currentTime, cursor)`, so the timeline grows by the silent
+  // gap too. Reporting a truncate point off the gap-inflated timeline overshoots
+  // the item's real length and the gateway rejects it ("Audio content of N ms is
+  // already shorter than M ms"). Clamping to this never overshoots.
+  private contentSeconds = 0;
 
   private context(): AudioContext {
     if (!this.ctx || this.ctx.state === 'closed') {
@@ -259,6 +267,7 @@ export class PlaybackQueue {
       this.itemId = itemId;
       this.playedSeconds = 0;
       this.startedAt = null;
+      this.contentSeconds = 0;
     }
     const pcm = base64ToPcm16(b64);
     if (!pcm.length) return;
@@ -276,6 +285,7 @@ export class PlaybackQueue {
     source.start(startAt);
     if (this.startedAt === null) this.startedAt = startAt;
     this.cursor = startAt + buffer.duration;
+    this.contentSeconds += buffer.duration;
     this.live.add(source);
     source.onended = () => this.live.delete(source);
   }
@@ -292,9 +302,11 @@ export class PlaybackQueue {
     const ctx = this.ctx;
     if (ctx && this.startedAt !== null) {
       const heard = ctx.currentTime - this.startedAt;
-      // Never claim more was heard than was scheduled.
-      const scheduled = Math.max(0, this.cursor - this.startedAt);
-      this.playedSeconds = Math.max(0, Math.min(heard, scheduled));
+      // Never claim more was heard than the gateway actually generated. Clamp to
+      // the summed content duration, NOT to `cursor - startedAt`: the latter
+      // includes silent underrun gaps and overshoots the item's real length,
+      // which the gateway rejects on truncate.
+      this.playedSeconds = Math.max(0, Math.min(heard, this.contentSeconds));
     }
     this.live.forEach((source) => {
       try {
@@ -397,11 +409,26 @@ export class RealtimeSession {
   private playback = new PlaybackQueue();
   private state: RealtimeState = 'idle';
   private closedByUs = false;
+  // Live voice opens MUTED: nothing is captured until the user taps to talk, so a
+  // noisy room cannot produce a turn before the first word. Muting drops frames
+  // in the capture callback rather than stopping the mic track — the stream stays
+  // warm, so unmute is instant and never re-prompts for the microphone.
+  private muted = true;
 
   constructor(private handlers: RealtimeHandlers) {}
 
   get currentState(): RealtimeState {
     return this.state;
+  }
+
+  /** Whether the microphone is currently silenced (nothing sent upstream). */
+  get isMuted(): boolean {
+    return this.muted;
+  }
+
+  /** Silence or re-open the microphone without touching the session. */
+  setMuted(muted: boolean): void {
+    this.muted = muted;
   }
 
   get micLevel(): number {
@@ -423,6 +450,7 @@ export class RealtimeSession {
    */
   async start(options: RealtimeStartOptions = {}): Promise<void> {
     this.closedByUs = false;
+    this.muted = true; // every call opens silenced; the user taps to talk
     this.setState('connecting');
 
     const { ticket, socket_url, mic_energy_floor } = await fetchRealtimeTicket(options);
@@ -450,6 +478,9 @@ export class RealtimeSession {
 
     await this.mic.start(
       (pcm) => {
+        // Silenced: capture keeps running (warm for instant unmute) but nothing
+        // reaches the gateway, so no VAD, no commit, no turn.
+        if (this.muted) return;
         if (socket.readyState !== WebSocket.OPEN) return;
         socket.send(JSON.stringify({ type: 'audio_append', audio: pcm16ToBase64(pcm) }));
       },

@@ -112,6 +112,10 @@ interface AssistantContextValue {
   voiceLevel: number;
   startLiveVoice: () => Promise<void>;
   stopLiveVoice: () => void;
+  /** True while the live-voice mic is silenced. A call opens muted. */
+  voiceMuted: boolean;
+  /** Silence or re-open the live-voice mic. No-op when no call is up. */
+  toggleVoiceMute: () => void;
 
   /** Which way the user is talking to us: typed, push-to-talk, or live voice. */
   inputMode: InputMode;
@@ -389,6 +393,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [voiceAvailable, setVoiceAvailable] = useState(true);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceLevel, setVoiceLevel] = useState(0);
+  // A call opens muted (see RealtimeSession): the user taps to talk.
+  const [voiceMuted, setVoiceMuted] = useState(true);
 
   const threadIdRef = useRef<string | null>(null);
   const voiceSessionRef = useRef<RealtimeSession | null>(null);
@@ -819,6 +825,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     }
 
     setVoiceError(null);
+    setVoiceMuted(true); // opens silenced; the user taps to talk
     setView('chat');
 
     const session = new RealtimeSession({
@@ -898,6 +905,14 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       setVoiceState('idle');
     }
   }, [ensureVoiceTurn, product, runHostActions, stopLiveVoice, uiLang, writeVoiceText]);
+
+  const toggleVoiceMute = useCallback(() => {
+    const session = voiceSessionRef.current;
+    if (!session) return;
+    const next = !session.isMuted;
+    session.setMuted(next);
+    setVoiceMuted(next);
+  }, []);
 
   // Poll the mic level only while a call is up — no timer when idle.
   useEffect(() => {
@@ -1000,8 +1015,9 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // out of the thread, out of the history the checkpointer rebuilds, and out of
   // the summarizer, by construction rather than by convention.
   //
-  // Rollback lever: NEXT_PUBLIC_ASSISTANT_WELCOME=false restores the generic panel.
-  const welcomeEnabled = process.env.NEXT_PUBLIC_ASSISTANT_WELCOME !== 'false';
+  // Default off: the assistant opens quietly and waits for the user rather than
+  // posting an unsolicited greeting. Opt back in with NEXT_PUBLIC_ASSISTANT_WELCOME=true.
+  const welcomeEnabled = process.env.NEXT_PUBLIC_ASSISTANT_WELCOME === 'true';
   const [storedUsername, setStoredUsername] = useState('');
   useEffect(() => {
     try {
@@ -1186,6 +1202,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       voiceLevel,
       startLiveVoice,
       stopLiveVoice,
+      voiceMuted,
+      toggleVoiceMute,
       inputMode,
       setInputMode,
       welcomeMessage,
@@ -1260,6 +1278,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       voiceLevel,
       startLiveVoice,
       stopLiveVoice,
+      voiceMuted,
+      toggleVoiceMute,
       inputMode,
       setInputMode,
       welcomeMessage,

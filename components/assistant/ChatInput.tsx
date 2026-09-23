@@ -1,7 +1,16 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { AudioLines, Mic, Paperclip, PhoneOff, SendHorizontal, SpellCheck, Square } from 'lucide-react';
+import {
+  AudioLines,
+  Mic,
+  MicOff,
+  Paperclip,
+  PhoneOff,
+  SendHorizontal,
+  SpellCheck,
+  Square,
+} from 'lucide-react';
 import { transcribeAudio, correctTranscript } from '@/lib/api';
 import { useAssistant, type ProductSelection } from '@/context/AssistantContext';
 import { t } from '@/lib/i18n';
@@ -132,6 +141,8 @@ export function ChatInput() {
     voiceLevel: liveVoiceLevel,
     startLiveVoice,
     stopLiveVoice,
+    voiceMuted,
+    toggleVoiceMute,
     setInputMode,
   } = useAssistant();
   const liveVoiceOn = liveVoiceState !== 'idle' && liveVoiceState !== 'error';
@@ -785,25 +796,58 @@ export function ChatInput() {
         )}
         <button
           onClick={
-            isRecording
-              ? stopRecording
-              : () => {
-                  // Remember that they reach for the mic, so the next
-                  // conversation opens push-to-talk rather than live voice.
-                  setInputMode('ptt');
-                  void startRecording();
-                }
+            liveVoiceOn
+              ? toggleVoiceMute
+              : isRecording
+                ? stopRecording
+                : () => {
+                    // Remember that they reach for the mic, so the next
+                    // conversation opens push-to-talk rather than live voice.
+                    setInputMode('ptt');
+                    void startRecording();
+                  }
           }
-          disabled={streaming || isTranscribing || isCorrecting || liveVoiceOn}
-          aria-label={t(uiLang, isRecording ? 'input.voiceStop' : 'input.voiceStart')}
-          title={t(uiLang, isRecording ? 'input.voiceStopTitle' : 'input.voiceStartTitle')}
+          // In live voice the same button mutes/unmutes the mic; otherwise it
+          // is push-to-talk (disabled while a live call holds the mic).
+          disabled={liveVoiceOn ? false : streaming || isTranscribing || isCorrecting}
+          aria-label={t(
+            uiLang,
+            liveVoiceOn
+              ? voiceMuted
+                ? 'input.liveUnmute'
+                : 'input.liveMute'
+              : isRecording
+                ? 'input.voiceStop'
+                : 'input.voiceStart',
+          )}
+          title={t(
+            uiLang,
+            liveVoiceOn
+              ? voiceMuted
+                ? 'input.liveMuteTitle'
+                : 'input.liveUnmuteTitle'
+              : isRecording
+                ? 'input.voiceStopTitle'
+                : 'input.voiceStartTitle',
+          )}
+          aria-pressed={liveVoiceOn ? !voiceMuted : undefined}
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-            isRecording
+            (liveVoiceOn && !voiceMuted) || isRecording
               ? 'animate-pulse border-accent-400 bg-accent-50 text-accent-600'
               : 'border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400'
           }`}
         >
-          {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          {liveVoiceOn ? (
+            voiceMuted ? (
+              <MicOff className="h-4 w-4" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )
+          ) : isRecording ? (
+            <Square className="h-4 w-4" />
+          ) : (
+            <Mic className="h-4 w-4" />
+          )}
         </button>
         <button
           onClick={() => void submit()}

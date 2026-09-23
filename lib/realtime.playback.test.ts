@@ -130,6 +130,20 @@ describe('what the user actually heard', () => {
     expect(heard!.playedMs).toBeLessThanOrEqual(Math.round(ctx.createBuffer(1, 1600, 16000).duration * 1000));
   });
 
+  it('clamps to summed audio, not the scheduled span with its silent gaps', () => {
+    // The "already shorter than" gateway rejection: playback underran, so the
+    // scheduled timeline (currentTime) ran past the audio that actually exists.
+    // playedMs must reflect the summed frame duration, never the wall clock.
+    const q = new PlaybackQueue();
+    q.enqueue(FRAME, 'item-9');
+    q.enqueue(FRAME, 'item-9'); // 2 frames of real audio in one item
+    ctx.currentTime = 999; // clock ran far past the buffered audio
+    q.flush();
+
+    const contentMs = Math.round(ctx.createBuffer(1, 1600, 16000).duration * 1000) * 2;
+    expect(q.heardSoFar()!.playedMs).toBeLessThanOrEqual(contentMs);
+  });
+
   it('starts counting again for a new assistant item', () => {
     const q = new PlaybackQueue();
     q.enqueue(FRAME, 'item-1');
