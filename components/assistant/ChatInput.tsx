@@ -871,7 +871,9 @@ export function ChatInput() {
         <div
           className={`mt-2 flex items-center gap-2 text-xs ${liveVoiceError ? 'text-red-500' : 'text-gray-400'}`}
         >
-          {liveVoiceState === 'listening' && (
+          {/* No level bars while muted: they animate to a mic whose audio is being
+              dropped, which is the same lie as the label. */}
+          {liveVoiceState === 'listening' && !voiceMuted && (
             <AudioLevelBars levels={LIVE_BAR_WEIGHTS.map((w) => liveVoiceLevel * w)} />
           )}
           <span>
@@ -884,7 +886,11 @@ export function ChatInput() {
                     ? 'input.liveThinking'
                     : liveVoiceState === 'speaking'
                       ? 'input.liveSpeaking'
-                      : 'input.liveListening',
+                      : // Muted is not listening. The call opens muted, so this is the
+                        // FIRST thing a user sees — it has to tell them what to do.
+                        voiceMuted
+                        ? 'input.liveMuted'
+                        : 'input.liveListening',
               )}
           </span>
         </div>

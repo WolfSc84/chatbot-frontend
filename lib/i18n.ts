@@ -87,6 +87,14 @@ const STRINGS: Record<string, { en: string; es: string }> = {
   'input.liveFailed': { en: 'Could not start live voice.', es: 'No se pudo iniciar la voz en vivo.' },
   'input.liveConnecting': { en: 'Connecting…', es: 'Conectando…' },
   'input.liveListening': { en: 'Listening…', es: 'Escuchando…' },
+  // Live voice opens MUTED (tap to talk), so the status must say so. Showing
+  // "Listening…" while the mic gate is shut told users the assistant could hear
+  // them when it could not: the session sat idle and closed after 60s with no
+  // transcript and no answer, which reads as the product being broken.
+  'input.liveMuted': {
+    en: 'Muted — tap the mic to talk',
+    es: 'Silenciado: toca el micrófono para hablar',
+  },
   'input.liveThinking': { en: 'Thinking…', es: 'Pensando…' },
   'input.liveSpeaking': { en: 'Speaking…', es: 'Hablando…' },
   'input.voiceStart': { en: 'Start voice recording', es: 'Iniciar grabación de voz' },
