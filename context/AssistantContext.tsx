@@ -775,26 +775,46 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // Live voice (realtime duplex)
   // ---------------------------------------------------------------------
 
-  /** Replace or extend one message's text in place. */
-  const writeVoiceText = useCallback((id: string, text: string, final: boolean) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, content: final ? text : m.content + text } : m)),
-    );
-  }, []);
+  /** Replace or extend one message's text in place, creating the bubble if needed.
+   *
+   * `ensureVoiceTurn` now allocates the user bubble lazily, so a turn can hold an
+   * id that has no message yet. A plain `map` would silently DROP the text in that
+   * case — this appends instead, which matters on barge-in, where the user speaks
+   * while an assistant-only turn is still open.
+   */
+  const writeVoiceText = useCallback(
+    (id: string, text: string, final: boolean, role: 'user' | 'assistant' = 'assistant') => {
+      setMessages((prev) => {
+        if (!prev.some((m) => m.id === id)) {
+          return [...prev, { id, role, content: text }];
+        }
+        return prev.map((m) =>
+          m.id === id ? { ...m, content: final ? text : m.content + text } : m,
+        );
+      });
+    },
+    [],
+  );
 
   /**
    * Ensure the pair of bubbles the current spoken turn writes into exists.
    * A turn ends when the assistant's text goes final, so the next transcript
    * opens a fresh pair — same thread, same message list as typed chat.
    */
-  const ensureVoiceTurn = useCallback(() => {
+  const ensureVoiceTurn = useCallback((withUser = true) => {
     if (voiceTurnRef.current) return voiceTurnRef.current;
     const pair = { user: nextId(), assistant: nextId() };
     voiceTurnRef.current = pair;
     setMessages((prev) => [
       ...prev,
-      { id: pair.user, role: 'user', content: '' },
-      { id: pair.assistant, role: 'assistant', content: '' },
+      // Only materialise the user bubble when a user utterance is what opened the
+      // turn. A DELEGATED answer arrives as a second assistant final — the bridging
+      // phrase ("let me check that") already went final and closed the previous
+      // turn — so it opens a turn with no utterance behind it. Creating the bubble
+      // unconditionally rendered a phantom empty "You" before every delegated
+      // answer, which read as the UI sending a blank message on the user's behalf.
+      ...(withUser ? [{ id: pair.user, role: 'user' as const, content: '' }] : []),
+      { id: pair.assistant, role: 'assistant' as const, content: '' },
     ]);
     return pair;
   }, []);
@@ -835,7 +855,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         }
       },
       onUserTranscript: (text, final) => {
-        writeVoiceText(ensureVoiceTurn().user, text, final);
+        writeVoiceText(ensureVoiceTurn(true).user, text, final, 'user');
       },
       onAssistantText: (text, final) => {
         // A superseding card already showed this answer; the model is only saying
@@ -848,7 +868,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
           }
           return;
         }
-        writeVoiceText(ensureVoiceTurn().assistant, text, final);
+        writeVoiceText(ensureVoiceTurn(false).assistant, text, final, 'assistant');
         // Final assistant text closes the turn; the next transcript starts a new pair.
         if (final) voiceTurnRef.current = null;
       },

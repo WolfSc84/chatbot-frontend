@@ -106,7 +106,7 @@ describe('live-voice mute drops frames until the user taps to talk', () => {
     expect(sends).toHaveLength(0);
   });
 
-  it('unmute resumes on the same stream, mute silences again', async () => {
+  it('unmute resumes on the same stream, mute stops sending mic audio', async () => {
     const session = new RealtimeSession(handlers());
     await session.start();
 
@@ -118,6 +118,70 @@ describe('live-voice mute drops frames until the user taps to talk', () => {
 
     session.setMuted(true);
     emitFrame();
-    expect(sends).toHaveLength(1); // no new frame while muted
+    // A frame still goes out, but it carries SILENCE, not the room. See the
+    // flush tests below for why.
+    expect(decodeAudio(sends[1])).toEqual([0, 0, 0, 0]);
   });
 });
+
+/**
+ * Muting mid-utterance used to throw the turn away.
+ *
+ * Server VAD ends a turn by hearing REALTIME_VAD_SILENCE_MS (2500ms) of silence in
+ * the audio it RECEIVES. Dropping frames the instant the user mutes gives it nothing
+ * to measure, so the utterance never commits, never transcribes, and no answer ever
+ * comes — reported as "I muted after speaking and it cancelled my request".
+ */
+describe('muting flushes silence so VAD can close the turn', () => {
+  it('sends zeroed frames after mute, so the words already spoken still commit', async () => {
+    const session = new RealtimeSession(handlers());
+    await session.start();
+    session.setMuted(false);
+    emitFrame();
+    sends.length = 0;
+
+    session.setMuted(true);
+    emitFrame();
+
+    expect(sends).toHaveLength(1);
+    const frame = JSON.parse(sends[0]);
+    expect(frame.type).toBe('audio_append');
+    // Same length as a real frame, so the gateway's silence clock advances at the
+    // same rate; all zeroes, so it adds no word.
+    expect(decodeAudio(sends[0])).toEqual([0, 0, 0, 0]);
+  });
+
+  it('stops entirely once the flush window has passed', async () => {
+    const session = new RealtimeSession(handlers());
+    await session.start();
+    session.setMuted(false);
+    session.setMuted(true);
+    sends.length = 0;
+
+    // Past MUTE_FLUSH_MS (3200ms): VAD has long since decided, so nothing more is
+    // owed and a muted mic must cost nothing.
+    const realNow = Date.now;
+    vi.spyOn(Date, 'now').mockReturnValue(realNow() + 5000);
+    emitFrame();
+    emitFrame();
+    expect(sends).toHaveLength(0);
+    vi.mocked(Date.now).mockRestore();
+  });
+
+  it('opening a call muted never flushes — nothing is sent before the first word', async () => {
+    const session = new RealtimeSession(handlers());
+    await session.start(); // opens muted via the field, not setMuted
+
+    emitFrame();
+    emitFrame();
+    expect(sends).toHaveLength(0);
+  });
+});
+
+/** Decode an audio_append envelope back to PCM samples. */
+function decodeAudio(raw: string): number[] {
+  const b64 = JSON.parse(raw).audio as string;
+  const binary = atob(b64);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return Array.from(new Int16Array(bytes.buffer));
+}

@@ -31,6 +31,10 @@ function pcm16ToBase64(pcm: Int16Array): string {
   return btoa(binary);
 }
 
+// Must exceed the gateway's REALTIME_VAD_SILENCE_MS (2500ms default) with margin,
+// or the flush stops before VAD has decided the user finished speaking.
+const MUTE_FLUSH_MS = 3200;
+
 function base64ToPcm16(b64: string): Int16Array {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -414,6 +418,16 @@ export class RealtimeSession {
   // in the capture callback rather than stopping the mic track — the stream stays
   // warm, so unmute is instant and never re-prompts for the microphone.
   private muted = true;
+  // When the user mutes, keep feeding DIGITAL SILENCE upstream until this moment.
+  //
+  // Server VAD ends a turn by hearing silence (REALTIME_VAD_SILENCE_MS, 2500ms) in
+  // the audio it receives. Cutting the stream dead mid-utterance gives it nothing to
+  // measure, so the turn never commits, never transcribes, and dies in the gateway's
+  // buffer — muting right after speaking silently threw the request away.
+  //
+  // Zeroed frames close the turn without adding a word, so the "a muted room cannot
+  // start a turn" property still holds: silence alone never triggers speech_started.
+  private muteFlushUntil = 0;
 
   constructor(private handlers: RealtimeHandlers) {}
 
@@ -429,6 +443,9 @@ export class RealtimeSession {
   /** Silence or re-open the microphone without touching the session. */
   setMuted(muted: boolean): void {
     this.muted = muted;
+    // Only a mute TRANSITION opens the flush window. A call opens muted via the
+    // field directly, so nothing is sent before the user has ever spoken.
+    this.muteFlushUntil = muted ? Date.now() + MUTE_FLUSH_MS : 0;
   }
 
   get micLevel(): number {
@@ -478,10 +495,18 @@ export class RealtimeSession {
 
     await this.mic.start(
       (pcm) => {
-        // Silenced: capture keeps running (warm for instant unmute) but nothing
-        // reaches the gateway, so no VAD, no commit, no turn.
-        if (this.muted) return;
         if (socket.readyState !== WebSocket.OPEN) return;
+        if (this.muted) {
+          // Past the flush window: capture keeps running (warm for instant unmute)
+          // but nothing reaches the gateway, so no VAD, no commit, no turn.
+          if (Date.now() >= this.muteFlushUntil) return;
+          // Inside it: send a same-length frame of zeroes, so VAD can hear the end
+          // of whatever the user was mid-way through saying and commit that turn.
+          socket.send(
+            JSON.stringify({ type: 'audio_append', audio: pcm16ToBase64(new Int16Array(pcm.length)) }),
+          );
+          return;
+        }
         socket.send(JSON.stringify({ type: 'audio_append', audio: pcm16ToBase64(pcm) }));
       },
       // Server-supplied per session. A junk or absent value gates nothing rather
