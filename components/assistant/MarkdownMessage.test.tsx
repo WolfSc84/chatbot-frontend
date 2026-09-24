@@ -67,3 +67,43 @@ describe('ordinary formatting still works', () => {
     expect(container.querySelectorAll('li')).toHaveLength(2);
   });
 });
+
+/**
+ * The ticket draft is the one place a GFM table reaches the panel, and it is the
+ * thing the user approves. remarkGfm parsed it all along, but no `table`/`th`/`td`
+ * components were registered and Tailwind's preflight strips default table borders,
+ * so the draft rendered as bare crammed text — reported as "the draft appears ugly".
+ */
+describe('ticket draft tables', () => {
+  // The exact shape render_ticket_markdown emits (ticket_creator/template.py).
+  const DRAFT = [
+    '## Summary',
+    '',
+    'Cannot sign in to myWells',
+    '',
+    '## Details',
+    '',
+    '| Field | Value |',
+    '| --- | --- |',
+    '| Affected application | Nabors Support |',
+    '| Category | user permissions |',
+  ].join('\n');
+
+  it('renders the draft metadata as a real table, not run-together text', () => {
+    render(<MarkdownMessage content={DRAFT} />);
+
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Field' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'Affected application' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'user permissions' })).toBeInTheDocument();
+  });
+
+  it('gives the table a border and a scroll container so it cannot widen the panel', () => {
+    const { container } = render(<MarkdownMessage content={DRAFT} />);
+
+    // The wrapper scrolls rather than the panel growing — a long field value in a
+    // narrow assistant column must not push the conversation sideways.
+    expect(container.querySelector('.overflow-x-auto')).toBeInTheDocument();
+    expect(screen.getAllByRole('row')[0].className).toContain('border-b');
+  });
+});
