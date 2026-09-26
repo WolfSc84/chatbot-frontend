@@ -1,7 +1,15 @@
-'use client';
+"use client";
 
-import { useRouter } from 'next/navigation';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from "next/navigation";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   deleteSession,
   generateExportSummary,
@@ -17,7 +25,7 @@ import {
   tenantOfSessionId,
   uploadFile,
   type TenantOption,
-} from '@/lib/api';
+} from "@/lib/api";
 import type {
   AgentProgressStep,
   ChatMessage,
@@ -26,25 +34,25 @@ import type {
   SessionInfo,
   TicketBoardResponse,
   TicketSort,
-} from '@/lib/types';
-import { IS_L1_SUPPORT_MODE } from '@/lib/flags';
-import { applyHostActions } from '@/lib/hostActions';
+} from "@/lib/types";
+import { IS_L1_SUPPORT_MODE } from "@/lib/flags";
+import { applyHostActions } from "@/lib/hostActions";
 import {
   isRealtimeSupported,
   RealtimeDisabledError,
   RealtimeSession,
   type RealtimeState,
-} from '@/lib/realtime';
-import { t, type Lang } from '@/lib/i18n';
+} from "@/lib/realtime";
+import { t, type Lang } from "@/lib/i18n";
 import {
   readStoredMode,
   resolveOpeningMode,
   storeMode,
   type InputMode,
-} from '@/lib/inputMode';
+} from "@/lib/inputMode";
 
-type AssistantStatus = 'ready' | 'streaming' | 'error';
-export type AssistantView = 'home' | 'chat' | 'history' | 'tickets';
+type AssistantStatus = "ready" | "streaming" | "error";
+export type AssistantView = "home" | "chat" | "history" | "tickets";
 
 /**
  * Mandatory tenant context the user must pick before sending a message. A tenant
@@ -107,6 +115,8 @@ interface AssistantContextValue {
   voiceAvailable: boolean;
   /** Why live voice is unavailable / what went wrong, for the UI to show. */
   voiceError: string | null;
+  /** The call dropped but can be reopened — a pause, not a failure. */
+  voiceResumable: boolean;
   /** Current mic input level 0..1, for the existing level bars. */
   voiceLevel: number;
   startLiveVoice: () => Promise<void>;
@@ -134,7 +144,10 @@ interface AssistantContextValue {
   /** Sales-only: attach a file to the current conversation as session context. */
   attachFile: (file: File) => Promise<{ filename: string; chars: number }>;
   /** Sales-only: download a generated report in the given format. */
-  saveReport: (report: ReportAttachment, format: 'pdf' | 'xlsx' | 'docx' | 'png') => Promise<void>;
+  saveReport: (
+    report: ReportAttachment,
+    format: "pdf" | "xlsx" | "docx" | "png",
+  ) => Promise<void>;
   newChat: () => void;
 
   // Audio playback
@@ -188,13 +201,13 @@ const nextId = () => `m_${Date.now()}_${idCounter++}`;
  * for a thread and must survive reloads and session resumes. We key it by
  * thread id in localStorage so reopening a conversation restores its product.
  */
-const THREAD_PRODUCT_KEY = 'assistant:threadProduct';
+const THREAD_PRODUCT_KEY = "assistant:threadProduct";
 
 /** localStorage key for the persisted UI chrome language (EN/ES). */
-const UI_LANG_KEY = 'assistant_ui_lang';
+const UI_LANG_KEY = "assistant_ui_lang";
 
 function loadThreadProduct(threadId: string | null): ProductSelection | null {
-  if (typeof window === 'undefined' || !threadId) return null;
+  if (typeof window === "undefined" || !threadId) return null;
   try {
     const raw = window.localStorage.getItem(THREAD_PRODUCT_KEY);
     if (!raw) return null;
@@ -205,11 +218,17 @@ function loadThreadProduct(threadId: string | null): ProductSelection | null {
   }
 }
 
-function saveThreadProduct(threadId: string | null, product: ProductSelection | null): void {
-  if (typeof window === 'undefined' || !threadId || !product) return;
+function saveThreadProduct(
+  threadId: string | null,
+  product: ProductSelection | null,
+): void {
+  if (typeof window === "undefined" || !threadId || !product) return;
   try {
     const raw = window.localStorage.getItem(THREAD_PRODUCT_KEY);
-    const map = (raw ? JSON.parse(raw) : {}) as Record<string, ProductSelection>;
+    const map = (raw ? JSON.parse(raw) : {}) as Record<
+      string,
+      ProductSelection
+    >;
     map[threadId] = product;
     window.localStorage.setItem(THREAD_PRODUCT_KEY, JSON.stringify(map));
   } catch {
@@ -235,11 +254,11 @@ function openComposeLink(url: string): boolean {
     return true;
   } catch {
     try {
-      const anchor = document.createElement('a');
+      const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.target = '_blank';
-      anchor.rel = 'noopener noreferrer';
-      anchor.style.display = 'none';
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.style.display = "none";
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -252,7 +271,7 @@ function openComposeLink(url: string): boolean {
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
+  const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
   document.body.appendChild(anchor);
@@ -271,20 +290,20 @@ const TENANT_RETRY_BACKOFF_MS = 400;
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(true);
-  const [view, setView] = useState<AssistantView>('home');
+  const [view, setView] = useState<AssistantView>("home");
 
   // UI chrome language (EN/ES). Defaults from navigator.language, persisted to
   // localStorage and read back on init (SSR-safe: navigator/localStorage are
   // only touched on the client). Complements the backend's message auto-detect.
   const [uiLang, setUiLangState] = useState<Lang>(() => {
-    if (typeof window === 'undefined') return 'en';
+    if (typeof window === "undefined") return "en";
     try {
       const saved = window.localStorage.getItem(UI_LANG_KEY);
-      if (saved === 'en' || saved === 'es') return saved;
+      if (saved === "en" || saved === "es") return saved;
     } catch {
       /* storage unavailable — fall through to locale */
     }
-    return navigator.language?.toLowerCase().startsWith('es') ? 'es' : 'en';
+    return navigator.language?.toLowerCase().startsWith("es") ? "es" : "en";
   });
   const setUiLang = useCallback((lang: Lang) => {
     setUiLangState(lang);
@@ -301,7 +320,9 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // the transcript. Null while tenants load, or when a tenant sets none — the view
   // falls back to a localized generic label rather than showing nothing.
   const assistantName =
-    availableTenants.find((tenant) => tenant.id === product)?.assistantName?.trim() || null;
+    availableTenants
+      .find((tenant) => tenant.id === product)
+      ?.assistantName?.trim() || null;
   // Distinct from "loaded and empty": without it the selector renders the same
   // bare placeholder while in flight, after a failure, and for a user with no
   // tenants — three very different situations that looked identical.
@@ -342,7 +363,9 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
             setTenantsLoading(false);
             return;
           }
-          await new Promise((resolve) => setTimeout(resolve, TENANT_RETRY_BACKOFF_MS * attempt));
+          await new Promise((resolve) =>
+            setTimeout(resolve, TENANT_RETRY_BACKOFF_MS * attempt),
+          );
         }
       }
     })();
@@ -356,10 +379,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [operatorName, setOperatorName] = useState<string | null>(null);
   const [operatorEmail, setOperatorEmail] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [status, setStatus] = useState<AssistantStatus>('ready');
+  const [status, setStatus] = useState<AssistantStatus>("ready");
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const [agentProgress, setAgentProgress] = useState<AgentProgressStep[]>([]);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState("");
 
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -371,25 +394,30 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [exportFormat, setExportFormat] = useState<ExportFormat>('pdf');
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("pdf");
   const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedExportIds, setSelectedExportIds] = useState<Set<string>>(new Set());
+  const [selectedExportIds, setSelectedExportIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   const [isSharing, setIsSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
 
-  const [ticketBoard, setTicketBoard] = useState<TicketBoardResponse | null>(null);
+  const [ticketBoard, setTicketBoard] = useState<TicketBoardResponse | null>(
+    null,
+  );
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [ticketsError, setTicketsError] = useState<string | null>(null);
-  const [ticketSearch, setTicketSearch] = useState('');
-  const [ticketSort, setTicketSort] = useState<TicketSort>('newest');
+  const [ticketSearch, setTicketSearch] = useState("");
+  const [ticketSort, setTicketSort] = useState<TicketSort>("newest");
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [rawTicket, setRawTicket] = useState<unknown>(null);
   const [rawTicketLoading, setRawTicketLoading] = useState(false);
 
-  const [voiceState, setVoiceState] = useState<RealtimeState>('idle');
+  const [voiceState, setVoiceState] = useState<RealtimeState>("idle");
   const [voiceAvailable, setVoiceAvailable] = useState(true);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceResumable, setVoiceResumable] = useState(false);
   const [voiceLevel, setVoiceLevel] = useState(0);
   // A call opens muted (see RealtimeSession): the user taps to talk.
   const [voiceMuted, setVoiceMuted] = useState(true);
@@ -408,7 +436,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const stopAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
-      audioRef.current.src = '';
+      audioRef.current.src = "";
       audioRef.current = null;
     }
     if (audioUrlRef.current) {
@@ -423,18 +451,24 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // Only accept a *complete + valid* saved identity; otherwise clear it so the
   // sign-in gate stays open instead of flickering shut on partial/stale data.
   useEffect(() => {
-    if (!IS_L1_SUPPORT_MODE || typeof window === 'undefined') return;
+    if (!IS_L1_SUPPORT_MODE || typeof window === "undefined") return;
     try {
-      const savedName = (window.localStorage.getItem('l1SupportName') ?? '').trim();
-      const savedEmail = (window.localStorage.getItem('l1SupportEmail') ?? '').trim();
-      const emailOk = /^[a-z0-9._%+-]+@([a-z0-9-]+\.)*example\.com$/.test(savedEmail.toLowerCase());
+      const savedName = (
+        window.localStorage.getItem("l1SupportName") ?? ""
+      ).trim();
+      const savedEmail = (
+        window.localStorage.getItem("l1SupportEmail") ?? ""
+      ).trim();
+      const emailOk = /^[a-z0-9._%+-]+@([a-z0-9-]+\.)*example\.com$/.test(
+        savedEmail.toLowerCase(),
+      );
       if (savedName && emailOk) {
         setOperatorName(savedName);
         setOperatorEmail(savedEmail.toLowerCase());
       } else if (savedName || savedEmail) {
         // Partial/invalid leftover — drop it so the gate is shown cleanly.
-        window.localStorage.removeItem('l1SupportName');
-        window.localStorage.removeItem('l1SupportEmail');
+        window.localStorage.removeItem("l1SupportName");
+        window.localStorage.removeItem("l1SupportEmail");
       }
     } catch {
       /* storage unavailable — operator will re-enter identity */
@@ -447,8 +481,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     setOperatorName(nextName);
     setOperatorEmail(nextEmail);
     try {
-      window.localStorage.setItem('l1SupportName', nextName);
-      window.localStorage.setItem('l1SupportEmail', nextEmail);
+      window.localStorage.setItem("l1SupportName", nextName);
+      window.localStorage.setItem("l1SupportEmail", nextEmail);
     } catch {
       /* storage unavailable — identity is still held in memory for this session */
     }
@@ -458,14 +492,15 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     setOperatorName(null);
     setOperatorEmail(null);
     try {
-      window.localStorage.removeItem('l1SupportName');
-      window.localStorage.removeItem('l1SupportEmail');
+      window.localStorage.removeItem("l1SupportName");
+      window.localStorage.removeItem("l1SupportEmail");
     } catch {
       /* ignore */
     }
   }, []);
 
-  const operatorReady = !IS_L1_SUPPORT_MODE || Boolean(operatorName && operatorEmail);
+  const operatorReady =
+    !IS_L1_SUPPORT_MODE || Boolean(operatorName && operatorEmail);
 
   const playMessageAudio = useCallback(
     async (messageId: string, text: string) => {
@@ -482,21 +517,27 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
       setAudioLoadingId(messageId);
       try {
-        const blob = await synthesizeAudio(speakable, ADVANCED_TTS_PROFILE, product);
+        const blob = await synthesizeAudio(
+          speakable,
+          ADVANCED_TTS_PROFILE,
+          product,
+        );
         const url = URL.createObjectURL(blob);
         audioUrlRef.current = url;
         const audio = new Audio(url);
         audioRef.current = audio;
         audio.onended = () => stopAudio();
         audio.onerror = () => {
-          setAudioError('Could not play audio.');
+          setAudioError("Could not play audio.");
           stopAudio();
         };
         await audio.play();
         setAudioLoadingId(null);
         setPlayingMessageId(messageId);
       } catch (err) {
-        setAudioError(err instanceof Error ? err.message : 'Could not play audio.');
+        setAudioError(
+          err instanceof Error ? err.message : "Could not play audio.",
+        );
         stopAudio();
       }
     },
@@ -530,8 +571,11 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
     return source
       .filter((m) => m.content.trim())
-      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.trim()}`)
-      .join('\n\n');
+      .map(
+        (m) =>
+          `${m.role === "user" ? "User" : "Assistant"}: ${m.content.trim()}`,
+      )
+      .join("\n\n");
   }, [messages, selectedExportIds, selectionMode]);
 
   const exportConversation = useCallback(async () => {
@@ -540,7 +584,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
     const transcript = buildTranscript();
     if (!transcript) {
-      setExportError('There are no messages to export yet.');
+      setExportError("There are no messages to export yet.");
       return;
     }
 
@@ -548,7 +592,11 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     try {
       let content = transcript;
       try {
-        const summary = await generateExportSummary(transcript, threadIdRef.current, product);
+        const summary = await generateExportSummary(
+          transcript,
+          threadIdRef.current,
+          product,
+        );
         if (summary.trim()) content = summary;
       } catch {
         // Fall back to the raw transcript if summarization fails.
@@ -557,22 +605,22 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       const stamp = new Date().toISOString().slice(0, 10);
       const baseName = `platform-conversation-${stamp}`;
 
-      if (exportFormat === 'clipboard') {
+      if (exportFormat === "clipboard") {
         await navigator.clipboard.writeText(content);
-      } else if (exportFormat === 'txt') {
-        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      } else if (exportFormat === "txt") {
+        const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
         downloadBlob(blob, `${baseName}.txt`);
-      } else if (exportFormat === 'docx') {
-        const { Document, Packer, Paragraph, TextRun } = await import('docx');
+      } else if (exportFormat === "docx") {
+        const { Document, Packer, Paragraph, TextRun } = await import("docx");
         const paragraphs = content
-          .split('\n')
+          .split("\n")
           .map((line) => new Paragraph({ children: [new TextRun(line)] }));
         const doc = new Document({ sections: [{ children: paragraphs }] });
         const blob = await Packer.toBlob(doc);
         downloadBlob(blob, `${baseName}.docx`);
       } else {
-        const { jsPDF } = await import('jspdf');
-        const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+        const { jsPDF } = await import("jspdf");
+        const pdf = new jsPDF({ unit: "pt", format: "a4" });
         const margin = 48;
         const maxWidth = pdf.internal.pageSize.getWidth() - margin * 2;
         const pageHeight = pdf.internal.pageSize.getHeight() - margin;
@@ -591,7 +639,11 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         pdf.save(`${baseName}.pdf`);
       }
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Could not export the conversation.');
+      setExportError(
+        err instanceof Error
+          ? err.message
+          : "Could not export the conversation.",
+      );
     } finally {
       setIsExporting(false);
     }
@@ -603,7 +655,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
     const transcript = buildTranscript();
     if (!transcript) {
-      setShareError('No conversation to share yet.');
+      setShareError("No conversation to share yet.");
       return;
     }
 
@@ -611,20 +663,27 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     try {
       let summary = transcript;
       try {
-        const generated = await generateExportSummary(transcript, threadIdRef.current, product);
+        const generated = await generateExportSummary(
+          transcript,
+          threadIdRef.current,
+          product,
+        );
         if (generated.trim()) summary = generated;
       } catch {
         // Fall back to the raw transcript if summarization fails.
       }
 
       const subject = encodeURIComponent(
-        `Conversation Export - ${threadIdRef.current || 'current conversation'}`,
+        `Conversation Export - ${threadIdRef.current || "current conversation"}`,
       );
       let body = encodeURIComponent(summary);
       let composeUrl = `mailto:?subject=${subject}&body=${body}`;
 
       if (composeUrl.length > MAX_MAILTO_URL_LENGTH) {
-        const condensed = summary.replace(/\n{2,}/g, '\n').replace(/[ \t]+/g, ' ').trim();
+        const condensed = summary
+          .replace(/\n{2,}/g, "\n")
+          .replace(/[ \t]+/g, " ")
+          .trim();
         const maxBodyChars = 900;
         const shortened =
           condensed.length > maxBodyChars
@@ -636,7 +695,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         if (composeUrl.length > MAX_MAILTO_URL_LENGTH) {
           await navigator.clipboard.writeText(summary);
           throw new Error(
-            'Summary is too long for automatic email compose. It has been copied to your clipboard.',
+            "Summary is too long for automatic email compose. It has been copied to your clipboard.",
           );
         }
       }
@@ -644,24 +703,36 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       const launched = openComposeLink(composeUrl);
       if (!launched) {
         await navigator.clipboard.writeText(summary);
-        throw new Error('Could not open your email client. Summary copied to clipboard instead.');
+        throw new Error(
+          "Could not open your email client. Summary copied to clipboard instead.",
+        );
       }
     } catch (err) {
-      setShareError(err instanceof Error ? err.message : 'Could not share the conversation.');
+      setShareError(
+        err instanceof Error
+          ? err.message
+          : "Could not share the conversation.",
+      );
     } finally {
       setIsSharing(false);
     }
   }, [buildTranscript, isSharing, product]);
 
   const loadTickets = useCallback(async () => {
-    setView('tickets');
+    setView("tickets");
     setTicketsLoading(true);
     setTicketsError(null);
     try {
-      const board = await getTicketBoard(ticketSearch.trim(), ticketSort, product);
+      const board = await getTicketBoard(
+        ticketSearch.trim(),
+        ticketSort,
+        product,
+      );
       setTicketBoard(board);
     } catch (err) {
-      setTicketsError(err instanceof Error ? err.message : 'Failed to load tickets.');
+      setTicketsError(
+        err instanceof Error ? err.message : "Failed to load tickets.",
+      );
     } finally {
       setTicketsLoading(false);
     }
@@ -671,25 +742,34 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // after a chat turn closes a ticket so the board reflects the deletion live.
   const refreshTicketBoardSilently = useCallback(async () => {
     try {
-      const board = await getTicketBoard(ticketSearch.trim(), ticketSort, product);
+      const board = await getTicketBoard(
+        ticketSearch.trim(),
+        ticketSort,
+        product,
+      );
       setTicketBoard(board);
     } catch {
       // Silent: the board will refresh on the next explicit open.
     }
   }, [ticketSearch, ticketSort, product]);
 
-  const loadRawTicket = useCallback(async (ticketId: string) => {
-    setRawTicketLoading(true);
-    setRawTicket(null);
-    try {
-      const data = await getRawTicket(ticketId, product);
-      setRawTicket(data);
-    } catch (err) {
-      setRawTicket({ error: err instanceof Error ? err.message : 'Failed to load ticket.' });
-    } finally {
-      setRawTicketLoading(false);
-    }
-  }, [product]);
+  const loadRawTicket = useCallback(
+    async (ticketId: string) => {
+      setRawTicketLoading(true);
+      setRawTicket(null);
+      try {
+        const data = await getRawTicket(ticketId, product);
+        setRawTicket(data);
+      } catch (err) {
+        setRawTicket({
+          error: err instanceof Error ? err.message : "Failed to load ticket.",
+        });
+      } finally {
+        setRawTicketLoading(false);
+      }
+    },
+    [product],
+  );
 
   const clearRawTicket = useCallback(() => setRawTicket(null), []);
 
@@ -705,15 +785,15 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     setShareError(null);
     threadIdRef.current = null;
     setMessages([]);
-    setStatus('ready');
+    setStatus("ready");
     setActiveNode(null);
     setAgentProgress([]);
-    setDraft('');
-    setView('home');
+    setDraft("");
+    setView("home");
   }, [stopAudio]);
 
   const loadHistory = useCallback(async () => {
-    setView('history');
+    setView("history");
     setHistoryLoading(true);
     setHistoryError(null);
     try {
@@ -722,23 +802,26 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       const data = await listAllTenantSessions(50);
       setSessions(data);
     } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : 'Failed to load chat history.');
+      setHistoryError(
+        err instanceof Error ? err.message : "Failed to load chat history.",
+      );
     } finally {
       setHistoryLoading(false);
     }
   }, []);
 
   const openSession = useCallback(async (sessionId: string) => {
-    setStatus('ready');
+    setStatus("ready");
     setActiveNode(null);
     setAgentProgress([]);
-    setView('chat');
+    setView("chat");
     // Restore the product chosen for this session so it keeps being sent with
     // every request for the resumed conversation — and use it for the scoped
     // message read below (state updates are async, so read the value directly).
     // Fall back to the tenant embedded in the session id for legacy threads.
     const threadProduct =
-      loadThreadProduct(sessionId) ?? (tenantOfSessionId(sessionId) as ProductSelection | null);
+      loadThreadProduct(sessionId) ??
+      (tenantOfSessionId(sessionId) as ProductSelection | null);
     setProduct(threadProduct);
     try {
       const history = await getSessionMessages(sessionId, threadProduct);
@@ -749,9 +832,11 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       setMessages([
         {
           id: nextId(),
-          role: 'assistant',
+          role: "assistant",
           content: `⚠️ ${
-            err instanceof Error ? err.message : 'Could not load this conversation.'
+            err instanceof Error
+              ? err.message
+              : "Could not load this conversation."
           }`,
         },
       ]);
@@ -761,7 +846,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const removeSession = useCallback(async (sessionId: string) => {
     setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
     try {
-      await deleteSession(sessionId, loadThreadProduct(sessionId) ?? tenantOfSessionId(sessionId));
+      await deleteSession(
+        sessionId,
+        loadThreadProduct(sessionId) ?? tenantOfSessionId(sessionId),
+      );
     } catch {
       try {
         setSessions(await listAllTenantSessions(50));
@@ -783,7 +871,12 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
    * while an assistant-only turn is still open.
    */
   const writeVoiceText = useCallback(
-    (id: string, text: string, final: boolean, role: 'user' | 'assistant' = 'assistant') => {
+    (
+      id: string,
+      text: string,
+      final: boolean,
+      role: "user" | "assistant" = "assistant",
+    ) => {
       setMessages((prev) => {
         if (!prev.some((m) => m.id === id)) {
           return [...prev, { id, role, content: text }];
@@ -813,8 +906,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       // turn — so it opens a turn with no utterance behind it. Creating the bubble
       // unconditionally rendered a phantom empty "You" before every delegated
       // answer, which read as the UI sending a blank message on the user's behalf.
-      ...(withUser ? [{ id: pair.user, role: 'user' as const, content: '' }] : []),
-      { id: pair.assistant, role: 'assistant' as const, content: '' },
+      ...(withUser
+        ? [{ id: pair.user, role: "user" as const, content: "" }]
+        : []),
+      { id: pair.assistant, role: "assistant" as const, content: "" },
     ]);
     return pair;
   }, []);
@@ -830,7 +925,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // Graph-emitted host-page actions. Typed turns and spoken turns call this same
   // function, so a spoken request does exactly what the typed equivalent does.
   const runHostActions = useCallback(
-    (actions: unknown) => applyHostActions(actions, (path) => router.push(path)),
+    (actions: unknown) =>
+      applyHostActions(actions, (path) => router.push(path)),
     [router],
   );
 
@@ -838,13 +934,14 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     if (voiceSessionRef.current || !product) return;
     if (!isRealtimeSupported()) {
       setVoiceAvailable(false);
-      setVoiceError(t(uiLang, 'input.liveUnsupported'));
+      setVoiceError(t(uiLang, "input.liveUnsupported"));
       return;
     }
 
     setVoiceError(null);
+    setVoiceResumable(false);
     setVoiceMuted(true); // opens silenced; the user taps to talk
-    setView('chat');
+    setView("chat");
 
     const session = new RealtimeSession({
       onState: setVoiceState,
@@ -855,20 +952,29 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         }
       },
       onUserTranscript: (text, final) => {
-        writeVoiceText(ensureVoiceTurn(true).user, text, final, 'user');
+        // The user speaking is the turn boundary, and the only thing that clears the
+        // supersede flag. It used to clear on the first assistant `final` instead, so
+        // a turn that produced a SECOND response — a re-route, or a recovered refusal
+        // — wrote that one to the panel as its own message beside the card. Live on
+        // 2026-09-25 that is how one "what tickets do I have open" became three
+        // bubbles. One graph answer, one message, however many times the model speaks.
+        voiceCardSupersedesRef.current = false;
+        writeVoiceText(ensureVoiceTurn(true).user, text, final, "user");
       },
       onAssistantText: (text, final) => {
         // A superseding card already showed this answer; the model is only saying
         // it out loud. Drop the text (the audio envelope is separate and still
         // plays) rather than writing a duplicate message.
         if (voiceCardSupersedesRef.current) {
-          if (final) {
-            voiceCardSupersedesRef.current = false;
-            voiceTurnRef.current = null;
-          }
+          if (final) voiceTurnRef.current = null;
           return;
         }
-        writeVoiceText(ensureVoiceTurn(false).assistant, text, final, 'assistant');
+        writeVoiceText(
+          ensureVoiceTurn(false).assistant,
+          text,
+          final,
+          "assistant",
+        );
         // Final assistant text closes the turn; the next transcript starts a new pair.
         if (final) voiceTurnRef.current = null;
       },
@@ -890,12 +996,24 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         if (supersedesText) voiceCardSupersedesRef.current = true;
         setMessages((prev) => [
           ...prev,
-          { id: `card-${Date.now()}`, role: 'assistant', content: markdown },
+          { id: `card-${Date.now()}`, role: "assistant", content: markdown },
         ]);
       },
       onError: (message, recoverable) => {
-        setVoiceError(message);
-        if (!recoverable) stopLiveVoice();
+        // ALWAYS release the session. A "recoverable" close used to skip
+        // stopLiveVoice() — the only thing that nulls voiceSessionRef — and
+        // startLiveVoice's first line early-returns while that ref is set. So the
+        // call could never be restarted and the red text never cleared: the user
+        // had to start a new conversation and lost the one they were having.
+        //
+        // Nothing is actually lost by reconnecting. threadIdRef survives both
+        // stopLiveVoice and teardown, start() already passes it, and core admits a
+        // second socket on the same thread (it checks ownership, not first use).
+        stopLiveVoice();
+        setVoiceResumable(recoverable);
+        // An idle timeout or a dropped socket is a pause, not a failure, and must
+        // not be dressed as one. Only a close we cannot retry keeps its own words.
+        setVoiceError(recoverable ? t(uiLang, "input.liveResumable") : message);
       },
     });
     voiceSessionRef.current = session;
@@ -905,24 +1023,34 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         threadId: threadIdRef.current,
         // One source of truth for spoken and typed replies: the UI toggle.
         replyLanguage: uiLang,
-        currentPage: typeof window !== 'undefined' ? window.location.pathname : null,
+        currentPage:
+          typeof window !== "undefined" ? window.location.pathname : null,
         product,
       });
     } catch (err) {
       voiceSessionRef.current = null;
       if (err instanceof RealtimeDisabledError) {
         setVoiceAvailable(false);
-        setVoiceError(t(uiLang, 'input.liveOff'));
+        setVoiceError(t(uiLang, "input.liveOff"));
         // Name check, not `instanceof DOMException` — a denied mic surfaces as a
         // DOMException in browsers but as a plain named Error behind some polyfills.
-      } else if (err instanceof Error && err.name === 'NotAllowedError') {
-        setVoiceError(t(uiLang, 'input.liveDenied'));
+      } else if (err instanceof Error && err.name === "NotAllowedError") {
+        setVoiceError(t(uiLang, "input.liveDenied"));
       } else {
-        setVoiceError(err instanceof Error ? err.message : t(uiLang, 'input.liveFailed'));
+        setVoiceError(
+          err instanceof Error ? err.message : t(uiLang, "input.liveFailed"),
+        );
       }
-      setVoiceState('idle');
+      setVoiceState("idle");
     }
-  }, [ensureVoiceTurn, product, runHostActions, stopLiveVoice, uiLang, writeVoiceText]);
+  }, [
+    ensureVoiceTurn,
+    product,
+    runHostActions,
+    stopLiveVoice,
+    uiLang,
+    writeVoiceText,
+  ]);
 
   const toggleVoiceMute = useCallback(() => {
     const session = voiceSessionRef.current;
@@ -934,7 +1062,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
   // Poll the mic level only while a call is up — no timer when idle.
   useEffect(() => {
-    if (voiceState === 'idle' || voiceState === 'error') return;
+    if (voiceState === "idle" || voiceState === "error") return;
     const timer = window.setInterval(() => {
       setVoiceLevel(voiceSessionRef.current?.micLevel ?? 0);
     }, 80);
@@ -947,7 +1075,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // ── Input mode ────────────────────────────────────────────────────────────
   // Starts as text so the server render and the first client render agree; the
   // remembered choice is applied in the effect below, once storage can be read.
-  const [inputMode, setInputModeState] = useState<InputMode>('text');
+  const [inputMode, setInputModeState] = useState<InputMode>("text");
   const modeResolvedRef = useRef(false);
   // True only when 'live' is a choice the user actually made before, not merely
   // the default. Auto-connecting a metered socket (and prompting for the
@@ -963,7 +1091,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     if (modeResolvedRef.current) return;
     modeResolvedRef.current = true;
     const stored = readStoredMode();
-    autoStartLiveRef.current = stored === 'live';
+    autoStartLiveRef.current = stored === "live";
     setInputModeState(
       resolveOpeningMode({
         stored,
@@ -985,7 +1113,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       // transition-based version of this made the live button a no-op in exactly
       // that case. Both calls are idempotent — startLiveVoice returns early if a
       // session exists, stopLiveVoice if one does not.
-      if (mode === 'live') {
+      if (mode === "live") {
         void startLiveVoice();
       } else {
         stopLiveVoice();
@@ -1008,7 +1136,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // button is one click away.
   useEffect(() => {
     if (!autoStartLiveRef.current) return;
-    if (inputMode !== 'live' || !product || !voiceAvailable) return;
+    if (inputMode !== "live" || !product || !voiceAvailable) return;
     if (voiceSessionRef.current) return;
     // Only into a genuinely new conversation. Opening the socket on top of an
     // exchange already under way hijacks a conversation the user may have
@@ -1020,22 +1148,30 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
   // Live voice turning out to be impossible must not strand the user in it.
   useEffect(() => {
-    if (inputMode === 'live' && !voiceAvailable) setInputModeState('text');
+    if (inputMode === "live" && !voiceAvailable) setInputModeState("text");
   }, [inputMode, voiceAvailable]);
 
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || status === 'streaming') return;
+      if (!trimmed || status === "streaming") return;
       // A product (Sales / Knowledge Center) is mandatory before sending.
       if (!product) return;
 
-      setView('chat');
-      const userMsg: ChatMessage = { id: nextId(), role: 'user', content: trimmed };
-      const assistantMsg: ChatMessage = { id: nextId(), role: 'assistant', content: '' };
+      setView("chat");
+      const userMsg: ChatMessage = {
+        id: nextId(),
+        role: "user",
+        content: trimmed,
+      };
+      const assistantMsg: ChatMessage = {
+        id: nextId(),
+        role: "assistant",
+        content: "",
+      };
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
-      setDraft('');
-      setStatus('streaming');
+      setDraft("");
+      setStatus("streaming");
       setAgentProgress([]);
 
       const appendToAssistant = (chunk: string) => {
@@ -1074,7 +1210,13 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
             threadIdRef.current = threadId;
             saveThreadProduct(threadId, product);
           },
-          onComplete: ({ response, threadId, ticketClosed, report, actions }) => {
+          onComplete: ({
+            response,
+            threadId,
+            ticketClosed,
+            report,
+            actions,
+          }) => {
             threadIdRef.current = threadId;
             // Persist the product for this thread so it survives reloads and is
             // restored (and re-sent) when the session is reopened.
@@ -1102,9 +1244,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
             appendToAssistant(`\n\n⚠️ ${msg}`);
           },
         });
-        setStatus('ready');
+        setStatus("ready");
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unable to reach the backend.';
+        const message =
+          err instanceof Error ? err.message : "Unable to reach the backend.";
         setMessages((prev) => {
           const next = [...prev];
           const last = { ...next[next.length - 1] };
@@ -1112,7 +1255,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
           next[next.length - 1] = last;
           return next;
         });
-        setStatus('error');
+        setStatus("error");
       } finally {
         setActiveNode(null);
       }
@@ -1125,7 +1268,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // the SAME thread the file was scoped to, then persist the product for it.
   const attachFile = useCallback(
     async (file: File) => {
-      if (!product) throw new Error('Select a workspace before attaching a file.');
+      if (!product)
+        throw new Error("Select a workspace before attaching a file.");
       const result = await uploadFile(file, product, threadIdRef.current);
       if (result.threadId) {
         threadIdRef.current = result.threadId;
@@ -1138,7 +1282,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
   // Sales-only: render a generated report to a file and trigger a browser download.
   const saveReport = useCallback(
-    async (report: ReportAttachment, format: 'pdf' | 'xlsx' | 'docx' | 'png') => {
+    async (
+      report: ReportAttachment,
+      format: "pdf" | "xlsx" | "docx" | "png",
+    ) => {
       const { blob, filename } = await downloadReport(report, format, product);
       downloadBlob(blob, filename);
     },
@@ -1181,6 +1328,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       voiceState,
       voiceAvailable,
       voiceError,
+      voiceResumable,
       voiceLevel,
       startLiveVoice,
       stopLiveVoice,
@@ -1256,6 +1404,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       voiceState,
       voiceAvailable,
       voiceError,
+      voiceResumable,
       voiceLevel,
       startLiveVoice,
       stopLiveVoice,
@@ -1297,11 +1446,16 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     ],
   );
 
-  return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;
+  return (
+    <AssistantContext.Provider value={value}>
+      {children}
+    </AssistantContext.Provider>
+  );
 }
 
 export function useAssistant(): AssistantContextValue {
   const ctx = useContext(AssistantContext);
-  if (!ctx) throw new Error('useAssistant must be used within an AssistantProvider');
+  if (!ctx)
+    throw new Error("useAssistant must be used within an AssistantProvider");
   return ctx;
 }

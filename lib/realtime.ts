@@ -11,7 +11,7 @@
  * server-side. No bearer ever reaches this code.
  */
 
-import { fetchRealtimeTicket, RealtimeDisabledError } from './api';
+import { fetchRealtimeTicket, RealtimeDisabledError } from "./api";
 
 /** The gateway's wire format. Both directions, both ends. */
 export const REALTIME_SAMPLE_RATE = 24000;
@@ -22,7 +22,7 @@ export const REALTIME_SAMPLE_RATE = 24000;
 
 function pcm16ToBase64(pcm: Int16Array): string {
   const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
-  let binary = '';
+  let binary = "";
   // Chunked: String.fromCharCode(...bytes) blows the argument limit past ~100k.
   const CHUNK = 0x8000;
   for (let i = 0; i < bytes.length; i += CHUNK) {
@@ -40,7 +40,9 @@ function base64ToPcm16(b64: string): Int16Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   // Copy rather than alias: the byte offset is not guaranteed 2-aligned.
-  return new Int16Array(bytes.buffer.slice(0, bytes.length - (bytes.length % 2)));
+  return new Int16Array(
+    bytes.buffer.slice(0, bytes.length - (bytes.length % 2)),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +146,10 @@ export class MicCapture {
    * `energyFloor` comes from the ticket mint, so it is a per-session server value
    * rather than a build-time constant. 0 (or omitted) leaves capture ungated.
    */
-  async start(onFrame: (pcm: Int16Array) => void, energyFloor = 0): Promise<void> {
+  async start(
+    onFrame: (pcm: Int16Array) => void,
+    energyFloor = 0,
+  ): Promise<void> {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
@@ -157,7 +162,9 @@ export class MicCapture {
 
     const ctx = new AudioContext({ sampleRate: REALTIME_SAMPLE_RATE });
     this.ctx = ctx;
-    const url = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type: 'text/javascript' }));
+    const url = URL.createObjectURL(
+      new Blob([CAPTURE_WORKLET], { type: "text/javascript" }),
+    );
     try {
       await ctx.audioWorklet.addModule(url);
     } finally {
@@ -165,13 +172,14 @@ export class MicCapture {
     }
 
     const source = ctx.createMediaStreamSource(this.stream);
-    const node = new AudioWorkletNode(ctx, 'pcm-capture');
+    const node = new AudioWorkletNode(ctx, "pcm-capture");
     // The gate runs here rather than inside the worklet: the worklet is built from
     // a source string and cannot be imported by a test, and an untested gate in the
     // live audio path is exactly the thing that must not ship untested. Behaviour is
     // identical — same frames, same order, same cadence.
     const gate = new EnergyGate(energyFloor);
-    node.port.onmessage = (event) => onFrame(gate.process(event.data as Int16Array));
+    node.port.onmessage = (event) =>
+      onFrame(gate.process(event.data as Int16Array));
 
     // Level metering reuses the same graph so the existing level-bar UI works.
     const analyser = ctx.createAnalyser();
@@ -187,7 +195,7 @@ export class MicCapture {
     sink.gain.value = 0;
     node.connect(sink).connect(ctx.destination);
     this.node = node;
-    if (ctx.state === 'suspended') await ctx.resume();
+    if (ctx.state === "suspended") await ctx.resume();
   }
 
   /** Current input level 0..1, for the level bars. */
@@ -255,8 +263,11 @@ export class PlaybackQueue {
   // already shorter than M ms"). Clamping to this never overshoots.
   private contentSeconds = 0;
 
+  /** Called when the last scheduled buffer finishes and none is queued behind it. */
+  onDrained: (() => void) | null = null;
+
   private context(): AudioContext {
-    if (!this.ctx || this.ctx.state === 'closed') {
+    if (!this.ctx || this.ctx.state === "closed") {
       this.ctx = new AudioContext({ sampleRate: REALTIME_SAMPLE_RATE });
       this.cursor = 0;
     }
@@ -276,7 +287,7 @@ export class PlaybackQueue {
     const pcm = base64ToPcm16(b64);
     if (!pcm.length) return;
     const ctx = this.context();
-    if (ctx.state === 'suspended') void ctx.resume().catch(() => undefined);
+    if (ctx.state === "suspended") void ctx.resume().catch(() => undefined);
 
     const buffer = ctx.createBuffer(1, pcm.length, REALTIME_SAMPLE_RATE);
     const channel = buffer.getChannelData(0);
@@ -291,7 +302,19 @@ export class PlaybackQueue {
     this.cursor = startAt + buffer.duration;
     this.contentSeconds += buffer.duration;
     this.live.add(source);
-    source.onended = () => this.live.delete(source);
+    source.onended = () => {
+      this.live.delete(source);
+      // Drained: nothing sounding AND nothing scheduled ahead. `cursor` is the end
+      // of all scheduled audio, so this cannot fire in the gap between two chunks
+      // that are already queued. It is what lets the indicator stop claiming the
+      // assistant is speaking once it has stopped.
+      if (
+        this.live.size === 0 &&
+        (this.ctx?.currentTime ?? 0) >= this.cursor - 0.01
+      ) {
+        this.onDrained?.();
+      }
+    };
   }
 
   /**
@@ -341,7 +364,10 @@ export class PlaybackQueue {
    */
   heardSoFar(): { itemId: string; playedMs: number } | null {
     if (!this.itemId) return null;
-    return { itemId: this.itemId, playedMs: Math.round(this.playedSeconds * 1000) };
+    return {
+      itemId: this.itemId,
+      playedMs: Math.round(this.playedSeconds * 1000),
+    };
   }
 
   /** True while assistant audio is still scheduled to play. */
@@ -366,12 +392,20 @@ export class PlaybackQueue {
 // ---------------------------------------------------------------------------
 
 export type RealtimeState =
-  | 'idle'
-  | 'connecting'
-  | 'listening'
-  | 'thinking'
-  | 'speaking'
-  | 'error';
+  | "idle"
+  | "connecting"
+  // The call is open and the mic is live, but nobody is speaking. Distinct from
+  // 'listening', which means the user is talking RIGHT NOW (server VAD said so).
+  // Without this the indicator read "Listening…" at every silent moment and
+  // "Speaking…" for the rest of the call after the assistant's last word, because
+  // nothing ever moved it back. Both are claims about the microphone that were not
+  // true. Distinct from 'idle' too: 'idle' means there is no session, and
+  // `liveVoiceOn` tears the whole call UI down on it.
+  | "waiting"
+  | "listening"
+  | "thinking"
+  | "speaking"
+  | "error";
 
 export interface RealtimeHandlers {
   onState: (state: RealtimeState) => void;
@@ -393,7 +427,11 @@ export interface RealtimeHandlers {
    * belong on screen. The browser never infers this from `kind` — only the
    * server knows which spoken string it chose.
    */
-  onCard?: (card: { kind: string; markdown: string; supersedesText: boolean }) => void;
+  onCard?: (card: {
+    kind: string;
+    markdown: string;
+    supersedesText: boolean;
+  }) => void;
   onReady?: (info: { thread_id?: string; session_id?: string }) => void;
   onError: (message: string, recoverable: boolean) => void;
 }
@@ -411,7 +449,7 @@ export class RealtimeSession {
   private socket: WebSocket | null = null;
   private mic = new MicCapture();
   private playback = new PlaybackQueue();
-  private state: RealtimeState = 'idle';
+  private state: RealtimeState = "idle";
   private closedByUs = false;
   // Live voice opens MUTED: nothing is captured until the user taps to talk, so a
   // noisy room cannot produce a turn before the first word. Muting drops frames
@@ -468,11 +506,14 @@ export class RealtimeSession {
   async start(options: RealtimeStartOptions = {}): Promise<void> {
     this.closedByUs = false;
     this.muted = true; // every call opens silenced; the user taps to talk
-    this.setState('connecting');
+    this.setState("connecting");
 
-    const { ticket, socket_url, mic_energy_floor } = await fetchRealtimeTicket(options);
+    const { ticket, socket_url, mic_energy_floor } =
+      await fetchRealtimeTicket(options);
 
-    const socket = new WebSocket(`${socket_url}?ticket=${encodeURIComponent(ticket)}`);
+    const socket = new WebSocket(
+      `${socket_url}?ticket=${encodeURIComponent(ticket)}`,
+    );
     this.socket = socket;
 
     await new Promise<void>((resolve, reject) => {
@@ -480,9 +521,9 @@ export class RealtimeSession {
       socket.onerror = () =>
         // A pre-accept refusal surfaces as a plain handshake failure; the 4xxx
         // close code core logged is not visible to the browser.
-        reject(new Error('Live voice refused the connection.'));
+        reject(new Error("Live voice refused the connection."));
       socket.onclose = (event) => {
-        if (this.state === 'connecting') reject(new Error(closeReason(event)));
+        if (this.state === "connecting") reject(new Error(closeReason(event)));
       };
     });
 
@@ -503,22 +544,36 @@ export class RealtimeSession {
           // Inside it: send a same-length frame of zeroes, so VAD can hear the end
           // of whatever the user was mid-way through saying and commit that turn.
           socket.send(
-            JSON.stringify({ type: 'audio_append', audio: pcm16ToBase64(new Int16Array(pcm.length)) }),
+            JSON.stringify({
+              type: "audio_append",
+              audio: pcm16ToBase64(new Int16Array(pcm.length)),
+            }),
           );
           return;
         }
-        socket.send(JSON.stringify({ type: 'audio_append', audio: pcm16ToBase64(pcm) }));
+        socket.send(
+          JSON.stringify({ type: "audio_append", audio: pcm16ToBase64(pcm) }),
+        );
       },
       // Server-supplied per session. A junk or absent value gates nothing rather
       // than guessing a floor — a live call must never fail closed on a setting.
-      typeof mic_energy_floor === 'number' && mic_energy_floor >= 0 ? mic_energy_floor : 0,
+      typeof mic_energy_floor === "number" && mic_energy_floor >= 0
+        ? mic_energy_floor
+        : 0,
     );
 
-    this.setState('listening');
+    // When the assistant's audio runs out, stop claiming it is speaking. Anything
+    // arriving after this sets 'speaking' again, so a stalled chunk costs a flicker,
+    // not a wrong label.
+    this.playback.onDrained = () => {
+      if (this.state === "speaking") this.setState("waiting");
+    };
+    // Open, live, and nobody has said anything yet.
+    this.setState("waiting");
   }
 
   private onEnvelope(raw: unknown): void {
-    if (typeof raw !== 'string') return;
+    if (typeof raw !== "string") return;
     let envelope: Record<string, unknown>;
     try {
       envelope = JSON.parse(raw) as Record<string, unknown>;
@@ -527,25 +582,33 @@ export class RealtimeSession {
     }
 
     switch (envelope.type) {
-      case 'ready':
+      case "ready":
         // Re-arm 1 of 3 — a fresh session starts able to speak.
         this.playback.arm();
-        this.handlers.onReady?.(envelope as { thread_id?: string; session_id?: string });
-        break;
-      case 'user_transcript':
-        this.handlers.onUserTranscript(String(envelope.text ?? ''), Boolean(envelope.final));
-        break;
-      case 'assistant_text':
-        this.handlers.onAssistantText(String(envelope.text ?? ''), Boolean(envelope.final));
-        break;
-      case 'audio':
-        this.playback.enqueue(
-          String(envelope.audio ?? ''),
-          typeof envelope.item_id === 'string' ? envelope.item_id : undefined,
+        this.handlers.onReady?.(
+          envelope as { thread_id?: string; session_id?: string },
         );
-        this.setState('speaking');
         break;
-      case 'speech_started': {
+      case "user_transcript":
+        this.handlers.onUserTranscript(
+          String(envelope.text ?? ""),
+          Boolean(envelope.final),
+        );
+        break;
+      case "assistant_text":
+        this.handlers.onAssistantText(
+          String(envelope.text ?? ""),
+          Boolean(envelope.final),
+        );
+        break;
+      case "audio":
+        this.playback.enqueue(
+          String(envelope.audio ?? ""),
+          typeof envelope.item_id === "string" ? envelope.item_id : undefined,
+        );
+        this.setState("speaking");
+        break;
+      case "speech_started": {
         // Barge-in: the user talked over the assistant. Drop its audio now and
         // tell the server to abandon the response it was still generating.
         //
@@ -553,21 +616,24 @@ export class RealtimeSession {
         // the figure, so ask for it after.
         this.playback.flush();
         const heard = this.playback.heardSoFar();
-        this.send({ type: 'cancel' });
+        this.send({ type: "cancel" });
         if (heard) {
           // Cut the model's memory of the turn to what the user actually got,
           // so an interruption becomes usable context rather than a turn the
           // model believes it delivered in full.
           this.send({
-            type: 'truncate',
+            type: "truncate",
             item_id: heard.itemId,
             audio_end_ms: heard.playedMs,
           });
         }
-        this.setState('listening');
+        // The user is talking RIGHT NOW. This used to set the value the call already
+        // sat on, so `setState`'s no-change guard made the one event that means
+        // "someone is speaking" invisible.
+        this.setState("listening");
         break;
       }
-      case 'speech_stopped':
+      case "speech_stopped":
         // Re-arm 2 of 3, and the one that matters. Server VAD emits
         // speech_started when the user begins and speech_stopped when they
         // finish, and `create_response: true` means the next response follows
@@ -575,19 +641,20 @@ export class RealtimeSession {
         // guess, and re-arming on the next assistant_text would race the audio
         // deltas, which are not ordered against it.
         this.playback.arm();
-        this.setState('thinking');
+        this.setState("thinking");
         break;
-      case 'thinking':
-        this.setState('thinking');
+      case "thinking":
+        this.setState("thinking");
         break;
-      case 'actions':
+      case "actions":
         this.handlers.onActions?.((envelope.actions as unknown[]) ?? []);
         break;
-      case 'assistant_card': {
-        const markdown = typeof envelope.markdown === 'string' ? envelope.markdown : '';
+      case "assistant_card": {
+        const markdown =
+          typeof envelope.markdown === "string" ? envelope.markdown : "";
         if (markdown.trim()) {
           this.handlers.onCard?.({
-            kind: String(envelope.kind ?? 'unknown'),
+            kind: String(envelope.kind ?? "unknown"),
             markdown,
             // Absent on an older agents tier — default false, which is exactly
             // today's behaviour (show both), so the browser degrades cleanly.
@@ -596,12 +663,12 @@ export class RealtimeSession {
         }
         break;
       }
-      case 'error':
+      case "error":
         this.handlers.onError(
-          String(envelope.message ?? 'Live voice failed.'),
+          String(envelope.message ?? "Live voice failed."),
           Boolean(envelope.recoverable),
         );
-        if (!envelope.recoverable) this.setState('error');
+        if (!envelope.recoverable) this.setState("error");
         break;
       default:
         break;
@@ -610,8 +677,8 @@ export class RealtimeSession {
 
   /** Type a message into the live session (keyboard still works mid-call). */
   sendText(text: string): void {
-    this.send({ type: 'text', text });
-    this.setState('thinking');
+    this.send({ type: "text", text });
+    this.setState("thinking");
   }
 
   /** Manual turn end, for a push-to-talk style control over a live session. */
@@ -621,8 +688,8 @@ export class RealtimeSession {
     // control calls commit() — but the guard belongs with the send, not with
     // whoever wires a button to it later.
     this.playback.arm();
-    this.send({ type: 'commit' });
-    this.setState('thinking');
+    this.send({ type: "commit" });
+    this.setState("thinking");
   }
 
   private send(envelope: Record<string, unknown>): void {
@@ -634,7 +701,7 @@ export class RealtimeSession {
   stop(): void {
     this.closedByUs = true;
     try {
-      this.socket?.close(1000, 'client hung up');
+      this.socket?.close(1000, "client hung up");
     } catch {
       /* already gone */
     }
@@ -645,7 +712,7 @@ export class RealtimeSession {
     this.mic.stop();
     this.playback.close();
     this.socket = null;
-    this.setState('idle');
+    this.setState("idle");
   }
 }
 
@@ -653,26 +720,26 @@ export class RealtimeSession {
 function closeReason(event: CloseEvent): string {
   switch (event.code) {
     case 4401:
-      return 'The voice session could not be authorised. Try again.';
+      return "The voice session could not be authorised. Try again.";
     case 4403:
-      return 'Live voice is not available for this session.';
+      return "Live voice is not available for this session.";
     case 4429:
-      return 'Too many live voice sessions open. Close one and retry.';
+      return "Too many live voice sessions open. Close one and retry.";
     case 4503:
-      return 'The voice service is unreachable right now.';
+      return "The voice service is unreachable right now.";
     case 1000:
-      return 'Live voice ended.';
+      return "Live voice ended.";
     default:
-      return event.reason || 'Live voice disconnected.';
+      return event.reason || "Live voice disconnected.";
   }
 }
 
 /** Feature detection for the degrade-to-push-to-talk path. */
 export function isRealtimeSupported(): boolean {
   return (
-    typeof window !== 'undefined' &&
-    typeof WebSocket !== 'undefined' &&
-    typeof AudioWorkletNode !== 'undefined' &&
+    typeof window !== "undefined" &&
+    typeof WebSocket !== "undefined" &&
+    typeof AudioWorkletNode !== "undefined" &&
     !!navigator.mediaDevices?.getUserMedia
   );
 }

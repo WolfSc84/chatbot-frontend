@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   AudioLines,
   Mic,
@@ -10,12 +10,15 @@ import {
   SendHorizontal,
   SpellCheck,
   Square,
-} from 'lucide-react';
-import { transcribeAudio, correctTranscript } from '@/lib/api';
-import { useAssistant, type ProductSelection } from '@/context/AssistantContext';
-import { t } from '@/lib/i18n';
+} from "lucide-react";
+import { transcribeAudio, correctTranscript } from "@/lib/api";
+import {
+  useAssistant,
+  type ProductSelection,
+} from "@/context/AssistantContext";
+import { t } from "@/lib/i18n";
 
-const GRAMMAR_CHECK_STORAGE_KEY = 'platform:grammarCheckEnabled';
+const GRAMMAR_CHECK_STORAGE_KEY = "platform:grammarCheckEnabled";
 
 // Live voice reports one scalar level; spread it across the existing bar widget
 // so the indicator looks alive without a second analyser.
@@ -65,7 +68,7 @@ type SpeechRecognitionLike = {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
-type SensitivityProfile = 'low' | 'medium' | 'high';
+type SensitivityProfile = "low" | "medium" | "high";
 
 type VisualizerTuning = {
   noiseFloor: number;
@@ -100,7 +103,7 @@ const VISUALIZER_TUNING: Record<SensitivityProfile, VisualizerTuning> = {
 };
 
 function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
 
   const win = window as Window & {
     SpeechRecognition?: SpeechRecognitionConstructor;
@@ -117,7 +120,7 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
  * a `network` error — so we surface Edge-specific guidance for those failures.
  */
 function isEdgeBrowser(): boolean {
-  if (typeof navigator === 'undefined') return false;
+  if (typeof navigator === "undefined") return false;
   return /\bEdg(?:e|A|iOS)?\//.test(navigator.userAgent);
 }
 
@@ -138,6 +141,7 @@ export function ChatInput() {
     voiceState: liveVoiceState,
     voiceAvailable: liveVoiceAvailable,
     voiceError: liveVoiceError,
+    voiceResumable: liveVoiceResumable,
     voiceLevel: liveVoiceLevel,
     startLiveVoice,
     stopLiveVoice,
@@ -145,7 +149,7 @@ export function ChatInput() {
     toggleVoiceMute,
     setInputMode,
   } = useAssistant();
-  const liveVoiceOn = liveVoiceState !== 'idle' && liveVoiceState !== 'error';
+  const liveVoiceOn = liveVoiceState !== "idle" && liveVoiceState !== "error";
   // The product (Sales / Knowledge Center) may only be chosen at the start of a
   // conversation. Once the first message is sent it is locked for the thread;
   // starting a new chat (or resuming a session with no saved product) allows
@@ -158,7 +162,7 @@ export function ChatInput() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   // Accumulates partial + final results across continuous recognition
-  const interimTranscriptRef = useRef('');
+  const interimTranscriptRef = useRef("");
   // Web Audio analyser for real-time level visualisation
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -166,7 +170,9 @@ export function ChatInput() {
   const visualizerMonitorStreamRef = useRef<MediaStream | null>(null);
   const smoothedLevelsRef = useRef<number[]>([]);
   const NUM_BARS = 5;
-  const [audioLevels, setAudioLevels] = useState<number[]>(Array(NUM_BARS).fill(0));
+  const [audioLevels, setAudioLevels] = useState<number[]>(
+    Array(NUM_BARS).fill(0),
+  );
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isCorrecting, setIsCorrecting] = useState(false);
@@ -174,7 +180,7 @@ export function ChatInput() {
   const [voiceInfo, setVoiceInfo] = useState<string | null>(null);
   // Live (final + interim) transcript shown in the status line while recording, so
   // the user sees words appear as they speak instead of a static "Listening…".
-  const [liveTranscript, setLiveTranscript] = useState('');
+  const [liveTranscript, setLiveTranscript] = useState("");
   // Sales-only session file attach. The parsed text rides the current thread as
   // ephemeral session context (never the tenant corpus); see attachFile in context.
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -184,7 +190,7 @@ export function ChatInput() {
   // Speech-recognition language (BCP-47), derived from the single UI language
   // toggle so there is ONE language control (no separate voice-language select).
   // Drives recognition.lang + the STT model language so voice input follows EN/ES.
-  const voiceLang: 'en-US' | 'es-US' = uiLang === 'es' ? 'es-US' : 'en-US';
+  const voiceLang: "en-US" | "es-US" = uiLang === "es" ? "es-US" : "en-US";
   // Set when a browser-STT network/service failure has scheduled a seamless
   // fallback to the server-side STT path, so onend skips the "no speech" notice.
   const sttFallbackRef = useRef(false);
@@ -199,8 +205,10 @@ export function ChatInput() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(GRAMMAR_CHECK_STORAGE_KEY);
-      if (saved !== null) setGrammarCheckEnabled(saved === 'true');
-    } catch { /* ignore storage errors */ }
+      if (saved !== null) setGrammarCheckEnabled(saved === "true");
+    } catch {
+      /* ignore storage errors */
+    }
   }, []);
 
   const toggleGrammarCheck = () => {
@@ -208,13 +216,16 @@ export function ChatInput() {
       const next = !prev;
       try {
         window.localStorage.setItem(GRAMMAR_CHECK_STORAGE_KEY, String(next));
-      } catch { /* ignore storage errors */ }
+      } catch {
+        /* ignore storage errors */
+      }
       return next;
     });
   };
 
   // Current page path used as correction context
-  const currentPage = typeof window !== 'undefined' ? window.location.pathname : undefined;
+  const currentPage =
+    typeof window !== "undefined" ? window.location.pathname : undefined;
 
   // Voice input uses the browser's built-in live recognition: it transcribes
   // while you speak, with no upload / no ca-core→ca-agentic hop / no single-shot
@@ -223,7 +234,7 @@ export function ChatInput() {
   // left intact behind `preferBrowserStt=false` for a future streaming build;
   // to re-enable it, restore the `/api/chat/transcribe/status` probe here.
 
-  const streaming = status === 'streaming';
+  const streaming = status === "streaming";
 
   const handleAttach = async (file: File) => {
     setAttachError(null);
@@ -231,9 +242,11 @@ export function ChatInput() {
     setIsUploading(true);
     try {
       const { filename } = await attachFile(file);
-      setAttachInfo(t(uiLang, 'input.attachDone').replace('{name}', filename));
+      setAttachInfo(t(uiLang, "input.attachDone").replace("{name}", filename));
     } catch (err) {
-      setAttachError(err instanceof Error ? err.message : t(uiLang, 'input.attachFailed'));
+      setAttachError(
+        err instanceof Error ? err.message : t(uiLang, "input.attachFailed"),
+      );
     } finally {
       setIsUploading(false);
     }
@@ -243,7 +256,7 @@ export function ChatInput() {
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
-    textarea.style.height = 'auto';
+    textarea.style.height = "auto";
     textarea.style.height = `${textarea.scrollHeight}px`;
   }, [draft]);
 
@@ -253,7 +266,8 @@ export function ChatInput() {
 
   const submit = async () => {
     const text = draft.trim();
-    if (!text || streaming || isRecording || isTranscribing || isCorrecting) return;
+    if (!text || streaming || isRecording || isTranscribing || isCorrecting)
+      return;
     // A product (Sales / Knowledge Center) is mandatory before sending.
     if (!product) return;
 
@@ -278,7 +292,7 @@ export function ChatInput() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void submit();
     }
@@ -295,12 +309,16 @@ export function ChatInput() {
       // Reset any previous visualiser loop/context before starting a new one.
       stopAudioVisualiser();
 
-      const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 32; // small = fast
-      analyser.smoothingTimeConstant = VISUALIZER_TUNING.medium.smoothingTimeConstant;
+      analyser.smoothingTimeConstant =
+        VISUALIZER_TUNING.medium.smoothingTimeConstant;
       ctx.createMediaStreamSource(stream).connect(analyser);
       audioCtxRef.current = ctx;
       analyserRef.current = analyser;
@@ -326,7 +344,8 @@ export function ChatInput() {
           const slice = data.slice(i * step, (i + 1) * step);
           const avg = slice.reduce((s, v) => s + v, 0) / slice.length;
           const raw = avg / 255;
-          const gated = raw <= NOISE_FLOOR ? 0 : (raw - NOISE_FLOOR) / (1 - NOISE_FLOOR);
+          const gated =
+            raw <= NOISE_FLOOR ? 0 : (raw - NOISE_FLOOR) / (1 - NOISE_FLOOR);
           const boosted = Math.min(1, gated * GAIN);
           const prev = smoothedLevelsRef.current[i] ?? 0;
           const alpha = boosted > prev ? RISE_ALPHA : FALL_ALPHA;
@@ -351,7 +370,9 @@ export function ChatInput() {
     analyserRef.current = null;
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
-    visualizerMonitorStreamRef.current?.getTracks().forEach((track) => track.stop());
+    visualizerMonitorStreamRef.current
+      ?.getTracks()
+      .forEach((track) => track.stop());
     visualizerMonitorStreamRef.current = null;
     smoothedLevelsRef.current = [];
     setAudioLevels(Array(NUM_BARS).fill(0));
@@ -359,7 +380,10 @@ export function ChatInput() {
 
   useEffect(() => {
     return () => {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      if (
+        mediaRecorderRef.current &&
+        mediaRecorderRef.current.state !== "inactive"
+      ) {
         mediaRecorderRef.current.stop();
       }
       speechRecognitionRef.current?.stop();
@@ -372,7 +396,7 @@ export function ChatInput() {
   // capture) so submit() doesn't correct the same text a second time (Phase 22:
   // "correct at most once"). Any manual edit diverges from this, so typed changes
   // still get corrected on send.
-  const lastCorrectedRef = useRef('');
+  const lastCorrectedRef = useRef("");
 
   const appendTranscript = (transcript: string, corrected = false) => {
     const currentDraft = draftRef.current.trim();
@@ -380,18 +404,20 @@ export function ChatInput() {
     setDraft(next);
     // Mark the whole draft corrected only when the appended text was itself
     // corrected AND nothing uncorrected preceded it; otherwise clear the marker.
-    lastCorrectedRef.current = corrected && !currentDraft ? next.trim() : '';
+    lastCorrectedRef.current = corrected && !currentDraft ? next.trim() : "";
   };
 
   const startBrowserSpeechRecognition = async () => {
     const SpeechRecognition = getSpeechRecognitionConstructor();
     if (!SpeechRecognition) {
-      setVoiceError('Browser speech recognition is not supported in this browser.');
+      setVoiceError(
+        "Browser speech recognition is not supported in this browser.",
+      );
       return;
     }
 
-    let finalTranscript = '';
-    setLiveTranscript('');
+    let finalTranscript = "";
+    setLiveTranscript("");
     const recognition = new SpeechRecognition();
     // continuous=true: keeps listening until the user clicks stop,
     // capturing full sentences without cutting off mid-speech.
@@ -403,7 +429,9 @@ export function ChatInput() {
     // monitor stream purely for live visualisation.
     if (navigator.mediaDevices?.getUserMedia) {
       try {
-        const monitorStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const monitorStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
         startAudioVisualiser(monitorStream, true);
       } catch {
         // Visualiser is optional; recognition can still continue.
@@ -411,18 +439,18 @@ export function ChatInput() {
     }
 
     recognition.onresult = (event) => {
-      let interim = '';
+      let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const result = event.results[i];
         // Pick the alternative with the highest confidence score
-        let bestText = '';
+        let bestText = "";
         let bestConf = -1;
         for (let a = 0; a < result.length; a += 1) {
           const alt = result[a];
           const confidence = alt.confidence ?? 0;
           if (confidence > bestConf) {
             bestConf = confidence;
-            bestText = alt.transcript?.trim() ?? '';
+            bestText = alt.transcript?.trim() ?? "";
           }
         }
         if (result.isFinal) {
@@ -439,10 +467,10 @@ export function ChatInput() {
     recognition.onerror = (event) => {
       setIsRecording(false);
       speechRecognitionRef.current = null;
-      setLiveTranscript('');
+      setLiveTranscript("");
       stopAudioVisualiser();
 
-      const code = event.error ?? '';
+      const code = event.error ?? "";
       const edge = isEdgeBrowser();
 
       // Browser STT (Chrome) relies on a cloud speech service; a `network` /
@@ -452,49 +480,57 @@ export function ChatInput() {
       // dead-end error. (Edge is excluded: it uses the Windows on-device engine,
       // whose guidance is more actionable than a silent fallback.)
       const serverSttAvailable =
-        !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined';
-      if (!edge && serverSttAvailable && (code === 'network' || code === 'service-not-available')) {
+        !!navigator.mediaDevices?.getUserMedia &&
+        typeof MediaRecorder !== "undefined";
+      if (
+        !edge &&
+        serverSttAvailable &&
+        (code === "network" || code === "service-not-available")
+      ) {
         sttFallbackRef.current = true; // onend must skip the "no speech" notice
         setPreferBrowserStt(false); // subsequent clicks go straight to server STT
-        setVoiceInfo(t(uiLang, 'input.statusRecording'));
+        setVoiceInfo(t(uiLang, "input.statusRecording"));
         setTimeout(() => void startRecording(true), 0); // after onend cleans up
         return;
       }
 
       let message: string;
       switch (code) {
-        case 'not-allowed':
-        case 'permission-denied':
+        case "not-allowed":
+        case "permission-denied":
           message = edge
             ? 'Microphone is blocked in Edge. Click the lock/mic icon in the address bar → allow Microphone, and make sure Windows Settings → Privacy & security → Microphone → "Let desktop apps access your microphone" is on. Then reload and try again.'
-            : 'Microphone access was denied. Allow microphone permission in your browser and try again.';
+            : "Microphone access was denied. Allow microphone permission in your browser and try again.";
           break;
-        case 'no-speech':
-          message = 'No speech was detected. Please try again.';
+        case "no-speech":
+          message = "No speech was detected. Please try again.";
           break;
-        case 'audio-capture':
-          message = 'No microphone was found. Please check your microphone is connected.';
+        case "audio-capture":
+          message =
+            "No microphone was found. Please check your microphone is connected.";
           break;
-        case 'language-not-supported':
+        case "language-not-supported":
           message = edge
             ? 'Edge could not start speech recognition. Enable Windows "Online speech recognition" (Settings → Privacy & security → Speech), then try again.'
-            : 'The selected language is not supported for speech recognition.';
+            : "The selected language is not supported for speech recognition.";
           break;
-        case 'network':
+        case "network":
           message = edge
             ? 'Edge speech recognition needs Windows "Online speech recognition" turned on (Settings → Privacy & security → Speech). Enable it, then try again.'
-            : 'Speech recognition requires an internet connection. Please check your connection.';
+            : "Speech recognition requires an internet connection. Please check your connection.";
           break;
-        case 'service-not-available':
+        case "service-not-available":
           message = edge
             ? 'Edge\'s speech service is unavailable. Turn on Windows "Online speech recognition" (Settings → Privacy & security → Speech), or use Chrome.'
-            : 'Speech recognition service is unavailable. Try again in a moment.';
+            : "Speech recognition service is unavailable. Try again in a moment.";
           break;
-        case 'aborted':
+        case "aborted":
           // User or code stopped it — not an error worth surfacing
           return;
         default:
-          message = code ? `Speech error: ${code}. Please try again.` : 'Speech recognition failed. Please try again.';
+          message = code
+            ? `Speech error: ${code}. Please try again.`
+            : "Speech recognition failed. Please try again.";
       }
       setVoiceError(message);
     };
@@ -503,8 +539,8 @@ export function ChatInput() {
       setIsRecording(false);
       speechRecognitionRef.current = null;
       setVoiceInfo(null);
-      interimTranscriptRef.current = '';
-      setLiveTranscript('');
+      interimTranscriptRef.current = "";
+      setLiveTranscript("");
       stopAudioVisualiser();
 
       // A network/service failure scheduled a server-side fallback — that path
@@ -516,7 +552,7 @@ export function ChatInput() {
 
       const transcript = finalTranscript.trim();
       if (!transcript) {
-        setVoiceInfo(t(uiLang, 'input.voiceNoSpeech'));
+        setVoiceInfo(t(uiLang, "input.voiceNoSpeech"));
         return;
       }
 
@@ -526,14 +562,20 @@ export function ChatInput() {
       }
       setIsCorrecting(true);
       correctTranscript(transcript, currentPage, product)
-        .then((corrected) => { appendTranscript(corrected, true); })
-        .catch(() => { appendTranscript(transcript); })
-        .finally(() => { setIsCorrecting(false); });
+        .then((corrected) => {
+          appendTranscript(corrected, true);
+        })
+        .catch(() => {
+          appendTranscript(transcript);
+        })
+        .finally(() => {
+          setIsCorrecting(false);
+        });
     };
 
     speechRecognitionRef.current = recognition;
     setIsRecording(true);
-    setVoiceInfo(t(uiLang, 'input.voiceActive'));
+    setVoiceInfo(t(uiLang, "input.voiceActive"));
     recognition.start();
   };
 
@@ -549,7 +591,10 @@ export function ChatInput() {
       return;
     }
 
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
       void startBrowserSpeechRecognition();
       return;
     }
@@ -559,12 +604,16 @@ export function ChatInput() {
       mediaStreamRef.current = stream;
 
       const candidateTypes = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4',
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
       ];
-      const supportedType = candidateTypes.find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = supportedType ? new MediaRecorder(stream, { mimeType: supportedType }) : new MediaRecorder(stream);
+      const supportedType = candidateTypes.find((type) =>
+        MediaRecorder.isTypeSupported(type),
+      );
+      const recorder = supportedType
+        ? new MediaRecorder(stream, { mimeType: supportedType })
+        : new MediaRecorder(stream);
 
       audioChunksRef.current = [];
       recorder.ondataavailable = (event) => {
@@ -574,7 +623,7 @@ export function ChatInput() {
       };
 
       recorder.onerror = () => {
-        setVoiceError('Microphone recording failed.');
+        setVoiceError("Microphone recording failed.");
         setIsRecording(false);
         stopStream();
       };
@@ -584,13 +633,13 @@ export function ChatInput() {
         stopAudioVisualiser();
         stopStream();
 
-        const mimeType = recorder.mimeType || supportedType || 'audio/webm';
-        const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+        const mimeType = recorder.mimeType || supportedType || "audio/webm";
+        const extension = mimeType.includes("mp4") ? "mp4" : "webm";
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         audioChunksRef.current = [];
 
         if (!audioBlob.size) {
-          setVoiceError('No audio was captured. Please try again.');
+          setVoiceError("No audio was captured. Please try again.");
           return;
         }
 
@@ -603,7 +652,7 @@ export function ChatInput() {
             product,
           );
           if (!transcript) {
-            setVoiceError('No speech was detected. Please try again.');
+            setVoiceError("No speech was detected. Please try again.");
             return;
           }
           setIsTranscribing(false);
@@ -612,21 +661,27 @@ export function ChatInput() {
             return;
           }
           setIsCorrecting(true);
-          const corrected = await correctTranscript(transcript, currentPage, product);
+          const corrected = await correctTranscript(
+            transcript,
+            currentPage,
+            product,
+          );
           appendTranscript(corrected, true);
         } catch (error) {
           const message =
-            error instanceof Error ? error.message : 'Voice transcription failed.';
+            error instanceof Error
+              ? error.message
+              : "Voice transcription failed.";
 
           // Provider-agnostic unavailability signals: when the server-side STT
           // model isn't reachable/configured, gracefully fall back to browser
           // recognition instead of surfacing a dead-end error.
           const lowered = message.toLowerCase();
           const sttUnavailable = [
-            'not found',
-            'not configured',
-            'unavailable',
-            'unsupported',
+            "not found",
+            "not configured",
+            "unavailable",
+            "unsupported",
           ].some((sig) => lowered.includes(sig));
 
           if (sttUnavailable) {
@@ -636,7 +691,7 @@ export function ChatInput() {
               // Auto-start browser recognition immediately — no second click needed
               setTimeout(() => void startBrowserSpeechRecognition(), 0);
             } else {
-              setVoiceError('Speech-to-text is unavailable in this browser.');
+              setVoiceError("Speech-to-text is unavailable in this browser.");
             }
           } else {
             setVoiceError(message);
@@ -655,14 +710,16 @@ export function ChatInput() {
       stopStream();
       const denied =
         error instanceof DOMException &&
-        (error.name === 'NotAllowedError' || error.name === 'SecurityError');
+        (error.name === "NotAllowedError" || error.name === "SecurityError");
       if (denied && isEdgeBrowser()) {
         setVoiceError(
           'Microphone is blocked in Edge. Click the lock/mic icon in the address bar → allow Microphone, and make sure Windows Settings → Privacy & security → Microphone → "Let desktop apps access your microphone" is on. Then reload and try again.',
         );
       } else {
         setVoiceError(
-          error instanceof Error ? error.message : 'Microphone access was denied.',
+          error instanceof Error
+            ? error.message
+            : "Microphone access was denied.",
         );
       }
     }
@@ -675,7 +732,7 @@ export function ChatInput() {
     }
 
     const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === 'inactive') return;
+    if (!recorder || recorder.state === "inactive") return;
     recorder.stop();
   };
 
@@ -686,12 +743,12 @@ export function ChatInput() {
           role="alert"
           className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700"
         >
-          <span>{t(uiLang, 'input.sessionExpired')}</span>
+          <span>{t(uiLang, "input.sessionExpired")}</span>
           <a
             href="/login"
             className="shrink-0 rounded-md bg-rose-600 px-2 py-1 text-xs font-medium text-white hover:bg-rose-700"
           >
-            {t(uiLang, 'input.signIn')}
+            {t(uiLang, "input.signIn")}
           </a>
         </div>
       )}
@@ -702,30 +759,45 @@ export function ChatInput() {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={1}
-          placeholder={t(uiLang, 'input.placeholder')}
+          placeholder={t(uiLang, "input.placeholder")}
           className="block max-h-32 w-full min-w-0 resize-none overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500"
         />
         <div className="flex w-full flex-wrap items-center justify-end gap-2">
           {!productLocked && (
             <>
               <label className="sr-only" htmlFor="product-selection">
-                {t(uiLang, 'input.product')}
+                {t(uiLang, "input.product")}
               </label>
               <select
                 id="product-selection"
-                value={product ?? ''}
-                onChange={(e) => setProduct((e.target.value || null) as ProductSelection | null)}
-                disabled={
-                  streaming || isRecording || isTranscribing || isCorrecting || tenantsLoading
+                value={product ?? ""}
+                onChange={(e) =>
+                  setProduct(
+                    (e.target.value || null) as ProductSelection | null,
+                  )
                 }
-                aria-label={t(uiLang, 'input.product')}
-                title={t(uiLang, 'input.selectTenant')}
+                disabled={
+                  streaming ||
+                  isRecording ||
+                  isTranscribing ||
+                  isCorrecting ||
+                  tenantsLoading
+                }
+                aria-label={t(uiLang, "input.product")}
+                title={t(uiLang, "input.selectTenant")}
                 className={`h-8 shrink-0 rounded-lg border bg-white px-2 text-xs font-medium outline-none transition-colors hover:border-accent-400 focus:border-accent-400 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-navy-800 ${
-                  product ? 'border-gray-200 text-gray-700 dark:border-navy-700 dark:text-gray-200' : 'border-rose-300 text-gray-500 dark:text-gray-400'
+                  product
+                    ? "border-gray-200 text-gray-700 dark:border-navy-700 dark:text-gray-200"
+                    : "border-rose-300 text-gray-500 dark:text-gray-400"
                 }`}
               >
                 <option value="" disabled>
-                  {t(uiLang, tenantsLoading ? 'input.loadingTenants' : 'input.selectTenantOption')}
+                  {t(
+                    uiLang,
+                    tenantsLoading
+                      ? "input.loadingTenants"
+                      : "input.selectTenantOption",
+                  )}
                 </option>
                 {availableTenants.map((opt) => (
                   <option key={opt.id} value={opt.id}>
@@ -735,186 +807,250 @@ export function ChatInput() {
               </select>
             </>
           )}
-        {product === 'sales' && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleAttach(f);
-                e.target.value = '';
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={streaming || isUploading || isRecording || isTranscribing || isCorrecting}
-              aria-label={t(uiLang, 'input.attach')}
-              title={t(uiLang, 'input.attachTitle')}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:border-accent-400 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400"
-            >
-              <Paperclip className="h-4 w-4" />
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={toggleGrammarCheck}
-          disabled={isCorrecting}
-          aria-pressed={grammarCheckEnabled}
-          aria-label={t(uiLang, grammarCheckEnabled ? 'input.grammarDisable' : 'input.grammarEnable')}
-          title={t(uiLang, grammarCheckEnabled ? 'input.grammarOnTitle' : 'input.grammarOffTitle')}
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-            grammarCheckEnabled
-              ? 'border-accent-400 bg-accent-50 text-accent-600'
-              : 'border-gray-200 bg-white text-gray-400 hover:border-accent-400 hover:text-accent-700 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-500'
-          }`}
-        >
-          <SpellCheck className="h-4 w-4" />
-        </button>
-        {liveVoiceAvailable && (
+          {product === "sales" && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void handleAttach(f);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={
+                  streaming ||
+                  isUploading ||
+                  isRecording ||
+                  isTranscribing ||
+                  isCorrecting
+                }
+                aria-label={t(uiLang, "input.attach")}
+                title={t(uiLang, "input.attachTitle")}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:border-accent-400 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400"
+              >
+                <Paperclip className="h-4 w-4" />
+              </button>
+            </>
+          )}
           <button
             type="button"
-            // Go through the mode, not straight to the socket: that is what makes
-            // the choice survive to the next conversation. The context starts and
-            // stops the session as the mode changes.
-            onClick={() => setInputMode(liveVoiceOn ? 'text' : 'live')}
-            disabled={!product || streaming || isRecording || isTranscribing || isCorrecting}
-            aria-label={t(uiLang, liveVoiceOn ? 'input.liveStop' : 'input.liveStart')}
-            aria-pressed={liveVoiceOn}
-            title={t(uiLang, liveVoiceOn ? 'input.liveStopTitle' : 'input.liveStartTitle')}
+            onClick={toggleGrammarCheck}
+            disabled={isCorrecting}
+            aria-pressed={grammarCheckEnabled}
+            aria-label={t(
+              uiLang,
+              grammarCheckEnabled
+                ? "input.grammarDisable"
+                : "input.grammarEnable",
+            )}
+            title={t(
+              uiLang,
+              grammarCheckEnabled
+                ? "input.grammarOnTitle"
+                : "input.grammarOffTitle",
+            )}
             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-              liveVoiceOn
-                ? 'border-accent-400 bg-accent-50 text-accent-600'
-                : 'border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400'
+              grammarCheckEnabled
+                ? "border-accent-400 bg-accent-50 text-accent-600"
+                : "border-gray-200 bg-white text-gray-400 hover:border-accent-400 hover:text-accent-700 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-500"
             }`}
           >
-            {liveVoiceOn ? <PhoneOff className="h-4 w-4" /> : <AudioLines className="h-4 w-4" />}
+            <SpellCheck className="h-4 w-4" />
           </button>
-        )}
-        <button
-          onClick={
-            liveVoiceOn
-              ? toggleVoiceMute
-              : isRecording
-                ? stopRecording
-                : () => {
-                    // Remember that they reach for the mic, so the next
-                    // conversation opens push-to-talk rather than live voice.
-                    setInputMode('ptt');
-                    void startRecording();
-                  }
-          }
-          // In live voice the same button mutes/unmutes the mic; otherwise it
-          // is push-to-talk (disabled while a live call holds the mic).
-          disabled={liveVoiceOn ? false : streaming || isTranscribing || isCorrecting}
-          aria-label={t(
-            uiLang,
-            liveVoiceOn
-              ? voiceMuted
-                ? 'input.liveUnmute'
-                : 'input.liveMute'
-              : isRecording
-                ? 'input.voiceStop'
-                : 'input.voiceStart',
+          {liveVoiceAvailable && (
+            <button
+              type="button"
+              // Go through the mode, not straight to the socket: that is what makes
+              // the choice survive to the next conversation. The context starts and
+              // stops the session as the mode changes.
+              onClick={() => setInputMode(liveVoiceOn ? "text" : "live")}
+              disabled={
+                !product ||
+                streaming ||
+                isRecording ||
+                isTranscribing ||
+                isCorrecting
+              }
+              aria-label={t(
+                uiLang,
+                liveVoiceOn ? "input.liveStop" : "input.liveStart",
+              )}
+              aria-pressed={liveVoiceOn}
+              title={t(
+                uiLang,
+                liveVoiceOn ? "input.liveStopTitle" : "input.liveStartTitle",
+              )}
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                liveVoiceOn
+                  ? "border-accent-400 bg-accent-50 text-accent-600"
+                  : "border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400"
+              }`}
+            >
+              {liveVoiceOn ? (
+                <PhoneOff className="h-4 w-4" />
+              ) : (
+                <AudioLines className="h-4 w-4" />
+              )}
+            </button>
           )}
-          title={t(
-            uiLang,
-            liveVoiceOn
-              ? voiceMuted
-                ? 'input.liveMuteTitle'
-                : 'input.liveUnmuteTitle'
-              : isRecording
-                ? 'input.voiceStopTitle'
-                : 'input.voiceStartTitle',
-          )}
-          aria-pressed={liveVoiceOn ? !voiceMuted : undefined}
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-            (liveVoiceOn && !voiceMuted) || isRecording
-              ? 'animate-pulse border-accent-400 bg-accent-50 text-accent-600'
-              : 'border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400'
-          }`}
-        >
-          {liveVoiceOn ? (
-            voiceMuted ? (
-              <MicOff className="h-4 w-4" />
+          <button
+            onClick={
+              liveVoiceOn
+                ? toggleVoiceMute
+                : isRecording
+                  ? stopRecording
+                  : () => {
+                      // Remember that they reach for the mic, so the next
+                      // conversation opens push-to-talk rather than live voice.
+                      setInputMode("ptt");
+                      void startRecording();
+                    }
+            }
+            // In live voice the same button mutes/unmutes the mic; otherwise it
+            // is push-to-talk (disabled while a live call holds the mic).
+            disabled={
+              liveVoiceOn ? false : streaming || isTranscribing || isCorrecting
+            }
+            aria-label={t(
+              uiLang,
+              liveVoiceOn
+                ? voiceMuted
+                  ? "input.liveUnmute"
+                  : "input.liveMute"
+                : isRecording
+                  ? "input.voiceStop"
+                  : "input.voiceStart",
+            )}
+            title={t(
+              uiLang,
+              liveVoiceOn
+                ? voiceMuted
+                  ? "input.liveMuteTitle"
+                  : "input.liveUnmuteTitle"
+                : isRecording
+                  ? "input.voiceStopTitle"
+                  : "input.voiceStartTitle",
+            )}
+            aria-pressed={liveVoiceOn ? !voiceMuted : undefined}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              (liveVoiceOn && !voiceMuted) || isRecording
+                ? "animate-pulse border-accent-400 bg-accent-50 text-accent-600"
+                : "border-gray-200 bg-white text-gray-600 hover:border-accent-400 hover:text-accent-700 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400"
+            }`}
+          >
+            {liveVoiceOn ? (
+              voiceMuted ? (
+                <MicOff className="h-4 w-4" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )
+            ) : isRecording ? (
+              <Square className="h-4 w-4" />
             ) : (
               <Mic className="h-4 w-4" />
-            )
-          ) : isRecording ? (
-            <Square className="h-4 w-4" />
-          ) : (
-            <Mic className="h-4 w-4" />
-          )}
-        </button>
-        <button
-          onClick={() => void submit()}
-          disabled={
-            !draft.trim() ||
-            !product ||
-            streaming ||
-            isRecording ||
-            isTranscribing ||
-            isCorrecting ||
-            liveVoiceOn
-          }
-          aria-label={t(uiLang, 'input.send')}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-500 text-white transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <SendHorizontal className="h-4 w-4" />
-        </button>
+            )}
+          </button>
+          <button
+            onClick={() => void submit()}
+            disabled={
+              !draft.trim() ||
+              !product ||
+              streaming ||
+              isRecording ||
+              isTranscribing ||
+              isCorrecting ||
+              liveVoiceOn
+            }
+            aria-label={t(uiLang, "input.send")}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-500 text-white transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <SendHorizontal className="h-4 w-4" />
+          </button>
         </div>
       </div>
       {(liveVoiceOn || liveVoiceError) && (
         <div
-          className={`mt-2 flex items-center gap-2 text-xs ${liveVoiceError ? 'text-red-500' : 'text-gray-400'}`}
+          // Red is for something the user cannot get past. A paused call is not
+          // that: the socket closing on an idle timer is routine, the conversation
+          // survives it, and the phone button reopens the same thread.
+          className={`mt-2 flex items-center gap-2 text-xs ${
+            liveVoiceError && !liveVoiceResumable
+              ? "text-red-500"
+              : "text-gray-400"
+          }`}
         >
           {/* No level bars while muted: they animate to a mic whose audio is being
               dropped, which is the same lie as the label. */}
-          {liveVoiceState === 'listening' && !voiceMuted && (
-            <AudioLevelBars levels={LIVE_BAR_WEIGHTS.map((w) => liveVoiceLevel * w)} />
+          {/* Bars follow "the user is speaking", which is what 'listening' now means —
+              server VAD says so. They used to show through every silent moment of the
+              call, animating to a mic nobody was talking into. */}
+          {liveVoiceState === "listening" && !voiceMuted && (
+            <AudioLevelBars
+              levels={LIVE_BAR_WEIGHTS.map((w) => liveVoiceLevel * w)}
+            />
           )}
           <span>
             {liveVoiceError ??
               t(
                 uiLang,
-                liveVoiceState === 'connecting'
-                  ? 'input.liveConnecting'
-                  : liveVoiceState === 'thinking'
-                    ? 'input.liveThinking'
-                    : liveVoiceState === 'speaking'
-                      ? 'input.liveSpeaking'
+                liveVoiceState === "connecting"
+                  ? "input.liveConnecting"
+                  : liveVoiceState === "thinking"
+                    ? "input.liveThinking"
+                    : liveVoiceState === "speaking"
+                      ? "input.liveSpeaking"
                       : // Muted is not listening. The call opens muted, so this is the
                         // FIRST thing a user sees — it has to tell them what to do.
                         voiceMuted
-                        ? 'input.liveMuted'
-                        : 'input.liveListening',
+                        ? "input.liveMuted"
+                        : // Unmuted and silent is not listening either. 'listening' now
+                          // means server VAD heard the user start; everything else on an
+                          // open call is waiting for them.
+                          liveVoiceState === "listening"
+                          ? "input.liveListening"
+                          : "input.liveWaiting",
               )}
           </span>
         </div>
       )}
-      {(voiceError || voiceInfo || attachError || attachInfo || isRecording || isTranscribing || isCorrecting || isUploading) && (
-        <div className={`mt-2 flex items-center gap-2 text-xs ${voiceError || attachError ? 'text-red-500' : 'text-gray-400'}`}>
+      {(voiceError ||
+        voiceInfo ||
+        attachError ||
+        attachInfo ||
+        isRecording ||
+        isTranscribing ||
+        isCorrecting ||
+        isUploading) && (
+        <div
+          className={`mt-2 flex items-center gap-2 text-xs ${voiceError || attachError ? "text-red-500" : "text-gray-400"}`}
+        >
           {isRecording && <AudioLevelBars levels={audioLevels} />}
-          <span className={isRecording && liveTranscript ? 'italic text-gray-500' : undefined}>
+          <span
+            className={
+              isRecording && liveTranscript ? "italic text-gray-500" : undefined
+            }
+          >
             {voiceError ??
               attachError ??
               (isUploading
-                ? t(uiLang, 'input.statusAttaching')
-                : voiceInfo ??
+                ? t(uiLang, "input.statusAttaching")
+                : (voiceInfo ??
                   attachInfo ??
                   (isCorrecting
-                    ? t(uiLang, 'input.statusCorrecting')
+                    ? t(uiLang, "input.statusCorrecting")
                     : isRecording
                       ? // Live-stream the transcript as it comes in; fall back to the
                         // static listening/recording label until the first words land.
                         liveTranscript ||
                         (preferBrowserStt
-                          ? t(uiLang, 'input.statusListening')
-                          : t(uiLang, 'input.statusRecording'))
-                      : t(uiLang, 'input.statusTranscribing')))}
+                          ? t(uiLang, "input.statusListening")
+                          : t(uiLang, "input.statusRecording"))
+                      : t(uiLang, "input.statusTranscribing"))))}
           </span>
         </div>
       )}
