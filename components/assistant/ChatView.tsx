@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Bot, Download, FileSpreadsheet, FileText, Image as ImageIcon, Loader2, Pause, User, Volume2 } from 'lucide-react';
 import { useAssistant } from '@/context/AssistantContext';
 import { t, type Lang } from '@/lib/i18n';
-import type { ChatMessage, ReportAttachment } from '@/lib/types';
+import type { AgentProgressStep, ChatMessage, ReportAttachment } from '@/lib/types';
 import { MarkdownMessage } from './MarkdownMessage';
 
 type ReportFormat = 'pdf' | 'xlsx' | 'docx' | 'png';
@@ -72,6 +72,37 @@ function TypingIndicator({ lang }: { lang: Lang }) {
   );
 }
 
+/**
+ * The assistant's plan for a sequenced request, while it works through it.
+ *
+ * A multi-step turn takes long enough that dots alone read as a hang. The steps
+ * already arrive on the existing `step` events and were already collected into
+ * `agentProgress` — they were simply never rendered, so the work was invisible.
+ * Shown only while a turn is streaming; the steps are ephemeral and the answer
+ * replaces them.
+ */
+function PlanProgress({ steps, lang }: { steps: AgentProgressStep[]; lang: Lang }) {
+  const plan = steps.filter((step) => step.phase === 'plan');
+  if (plan.length === 0) return null;
+  return (
+    <ol
+      className="mt-1 space-y-1 text-xs text-gray-500 dark:text-gray-400"
+      aria-label={t(lang, 'chat.typing')}
+      role="status"
+      data-testid="plan-progress"
+    >
+      {plan.map((step) => (
+        <li key={step.id} className="flex items-start gap-1.5">
+          <span aria-hidden="true">{step.status === 'completed' ? '✓' : '•'}</span>
+          <span className={step.status === 'completed' ? 'line-through opacity-70' : undefined}>
+            {step.label}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export function ChatView({ messages, streaming }: ChatViewProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const {
@@ -84,6 +115,7 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
     selectionMode,
     selectedExportIds,
     toggleExportSelection,
+    agentProgress,
   } = useAssistant();
 
   // The assistant's own name for this tenant, falling back to the localized
@@ -154,7 +186,10 @@ export function ChatView({ messages, streaming }: ChatViewProps) {
                     {showCursor && <span className="accent-blink mt-0.5">▋</span>}
                   </div>
                 ) : showCursor ? (
-                  <TypingIndicator lang={uiLang} />
+                  <div className="inline-flex w-full flex-col gap-1">
+                    <TypingIndicator lang={uiLang} />
+                    <PlanProgress steps={agentProgress} lang={uiLang} />
+                  </div>
                 ) : (
                   '\u00A0'
                 )}
