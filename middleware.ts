@@ -15,9 +15,14 @@ import {
  *
  * Excludes the login page, the auth API, and Next internals so they stay reachable
  * while unauthenticated.
+ *
+ * `icon.svg` is the App Router's generated favicon route (app/icon.svg). It sits
+ * alongside the legacy `favicon.ico` exclusion for the same reason: the browser
+ * fetches it on the LOGIN page, where there is no session, so guarding it would
+ * 307 the icon to /login and leave the tab blank.
  */
 export const config = {
-  matcher: ['/((?!login|api/auth|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!login|api/auth|_next/static|_next/image|favicon.ico|icon.svg).*)'],
 };
 
 export async function middleware(req: NextRequest) {

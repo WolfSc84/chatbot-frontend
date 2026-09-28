@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Assistant">
+  <!-- Solid tile rather than a bare glyph: the tab favicon renders at 16px against
+       either a light or a dark browser chrome, and a filled ground keeps the mark
+       legible in both without needing a second asset. -->
+  <rect width="32" height="32" rx="7" fill="#1576b4"/>
+  <path d="M8 11.5A2.5 2.5 0 0 1 10.5 9h11A2.5 2.5 0 0 1 24 11.5v7a2.5 2.5 0 0 1-2.5 2.5H15l-4.6 3.5a.6.6 0 0 1-1-.48V21h-.9A2.5 2.5 0 0 1 8 18.5z" fill="#fff"/>
+  <circle cx="12.8" cy="15" r="1.35" fill="#1576b4"/>
+  <circle cx="16" cy="15" r="1.35" fill="#1576b4"/>
+  <circle cx="19.2" cy="15" r="1.35" fill="#1576b4"/>
+</svg>

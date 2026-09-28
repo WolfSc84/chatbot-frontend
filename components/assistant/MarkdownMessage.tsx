@@ -85,6 +85,31 @@ const markdownComponents: Components = {
     </blockquote>
   ),
   hr: () => <hr className="my-2 border-gray-200 dark:border-navy-700" />,
+  // GFM tables parse (remarkGfm is enabled) but Tailwind's preflight strips every
+  // default table border, so without these the ticket draft's metadata table rendered
+  // as bare crammed text. The wrapper scrolls rather than widening the panel: the
+  // assistant sits in a narrow column and a long "Affected application" value must not
+  // push the whole conversation sideways.
+  table: ({ children }) => (
+    <div className="mb-2 overflow-x-auto last:mb-0">
+      <table className="w-full border-collapse text-[12px]">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => (
+    <thead className="border-b border-gray-200 dark:border-navy-700">{children}</thead>
+  ),
+  tbody: ({ children }) => <tbody>{children}</tbody>,
+  tr: ({ children }) => (
+    <tr className="border-b border-gray-200 last:border-0 dark:border-navy-700">{children}</tr>
+  ),
+  th: ({ children }) => (
+    <th className="px-2 py-1 text-left font-medium text-gray-700 dark:text-gray-300">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td className="px-2 py-1 align-top text-gray-700 dark:text-gray-300">{children}</td>
+  ),
 };
 
 interface MarkdownMessageProps {

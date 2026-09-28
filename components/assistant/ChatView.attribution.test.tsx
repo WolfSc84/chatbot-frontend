@@ -23,6 +23,7 @@ const ctx = {
   selectionMode: false,
   selectedExportIds: new Set<string>(),
   toggleExportSelection: vi.fn(),
+  agentProgress: [] as Array<Record<string, unknown>>,
 };
 
 vi.mock('@/context/AssistantContext', () => ({ useAssistant: () => ctx }));
