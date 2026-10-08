@@ -3,19 +3,20 @@
 # Alpine builder) over the `npm ci` result and copies the stale local build —
 # a cross-arch/staleness hazard and a >750 MB context.
 #
-# NOTE: .env is deliberately NOT ignored. It is a committed, secret-free template
-# (secrets are injected server-side at runtime), and Next.js reads it at build to
-# inline NEXT_PUBLIC_* flags into the standalone bundle. Local-only overrides
-# (.env.local) are excluded below.
+# .env is NOT committed — it is each developer's local file and can hold
+# PLATFORM_BEARER_TOKEN / a dev token — so it never enters the build context.
+# Build-time NEXT_PUBLIC_* flags come from Dockerfile ARGs (secure defaults);
+# runtime secrets are injected at `docker run` / compose time.
 
 node_modules/
 .next/
 .git/
 .gitignore
 
-# Local, git-ignored env overrides (may hold developer-specific values).
-.env.local
-.env.*.local
+# Local env files (may hold secrets). The example stays: it documents the keys.
+.env
+.env.*
+!.env.example
 
 # Logs and misc
 *.log

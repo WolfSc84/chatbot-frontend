@@ -143,7 +143,20 @@ function setEnvKey(raw: string, key: string, value: string): string {
 
 // ── GET ────────────────────────────────────────────────────────────────────────
 
+/**
+ * A developer tool: it rewrites the repo's `.env` and restarts the backend. It has
+ * no place in a deployed app — any logged-in user could flip backend settings — so
+ * in production the route does not exist.
+ */
+function notInProduction(): NextResponse | null {
+  return process.env.NODE_ENV === 'production'
+    ? NextResponse.json({ error: 'Not found' }, { status: 404 })
+    : null;
+}
+
 export async function GET() {
+  const blocked = notInProduction();
+  if (blocked) return blocked;
   const raw = readEnvFile();
   const env = parseEnv(raw);
 
@@ -166,6 +179,8 @@ export async function GET() {
 // ── POST ───────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const blocked = notInProduction();
+  if (blocked) return blocked;
   let body: { key: string; value: string | boolean };
   try {
     body = await req.json();

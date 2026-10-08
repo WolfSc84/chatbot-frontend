@@ -28,6 +28,18 @@ WORKDIR /app
 COPY ./package.json ./package-lock.json ./
 RUN npm ci
 
+# Build-time flags inlined into the browser bundle. Passed as build args (never
+# read from a developer's .env, which .dockerignore keeps out). Secure default:
+# login ON. Override: --build-arg NEXT_PUBLIC_AUTH_LOGIN_ENABLED=false
+ARG NEXT_PUBLIC_AUTH_LOGIN_ENABLED=true
+# Empty = the app's own default (see lib/flags.ts and .env.example).
+ARG NEXT_PUBLIC_DEFAULT_TENANT=
+ARG NEXT_PUBLIC_DEFAULT_INPUT_MODE=
+ARG NEXT_PUBLIC_L1_SUPPORT_MODE=false
+ENV NEXT_PUBLIC_AUTH_LOGIN_ENABLED=${NEXT_PUBLIC_AUTH_LOGIN_ENABLED} \
+    NEXT_PUBLIC_DEFAULT_TENANT=${NEXT_PUBLIC_DEFAULT_TENANT} \
+    NEXT_PUBLIC_DEFAULT_INPUT_MODE=${NEXT_PUBLIC_DEFAULT_INPUT_MODE} \
+    NEXT_PUBLIC_L1_SUPPORT_MODE=${NEXT_PUBLIC_L1_SUPPORT_MODE}
 # Copy application sources and build the standalone output.
 COPY . .
 RUN mkdir -p /app/public

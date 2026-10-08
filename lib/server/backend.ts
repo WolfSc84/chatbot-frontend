@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { IS_LOGIN_ENABLED } from '@/lib/flags';
 import { ACCESS_COOKIE, readCookie } from '@/lib/server/auth';
 
 /**
@@ -60,6 +61,10 @@ function readTokenFromBackendEnv(): string {
 export function getBearerToken(req?: Request): string {
   const fromCookie = readCookie(req, ACCESS_COOKIE);
   if (fromCookie) return fromCookie;
+  // In production with login on, a request without a session gets NO token —
+  // never the shared platform token, which would let every logged-out visitor
+  // act as the service account. (Login-off deployments use it by design.)
+  if (process.env.NODE_ENV === 'production' && IS_LOGIN_ENABLED) return '';
   const fromEnv = process.env.PLATFORM_BEARER_TOKEN ?? process.env.NEXT_PUBLIC_DEV_TOKEN;
   if (fromEnv && fromEnv.trim()) return fromEnv.trim();
   return readTokenFromBackendEnv();
