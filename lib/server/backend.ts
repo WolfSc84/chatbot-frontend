@@ -132,6 +132,30 @@ export function supportHeaders(
  * - When the incoming proxy `req` is supplied, the validated support-identity
  *   headers are forwarded (L1 variation); ignored in standard mode by the backend.
  */
+/** Header carrying the browser's address to ca-ai-core (its TRUSTED_PROXY_HEADER). */
+export const CLIENT_IP_HEADER = 'x-client-ip';
+
+/**
+ * The browser's address as this server saw it, or null.
+ *
+ * Every backend call goes out from this server, so without this ca-ai-core keys
+ * its per-IP rate limit on the BFF's own address — one bucket shared by every
+ * user. The RIGHTMOST X-Forwarded-For entry is the one appended by the proxy
+ * directly in front of this server; entries to its left are client-controlled.
+ * Deployment requirement: run behind an ingress that sets or appends
+ * X-Forwarded-For, and keep ca-ai-core reachable only through this BFF (or have
+ * the edge strip `x-client-ip`), since core trusts the header.
+ */
+export function clientIp(req: Request): string | null {
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const hops = forwarded.split(',').map((h) => h.trim()).filter(Boolean);
+    if (hops.length) return hops[hops.length - 1];
+  }
+  const real = req.headers.get('x-real-ip')?.trim();
+  return real || null;
+}
+
 export function authHeaders(
   extra?: Record<string, string>,
   product?: string | null,
@@ -141,10 +165,13 @@ export function authHeaders(
   const support = req
     ? supportHeaders(req.headers.get('x-support-name'), req.headers.get('x-support-email'))
     : {};
+  const ip = req ? clientIp(req) : null;
   return {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(product !== undefined ? tenantHeaders(product) : {}),
     ...support,
     ...extra,
+    // Last, so nothing above can supply its own value: always ours.
+    ...(ip ? { [CLIENT_IP_HEADER]: ip } : {}),
   };
 }
