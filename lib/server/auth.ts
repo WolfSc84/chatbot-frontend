@@ -47,11 +47,21 @@ export function readCookie(req: Request | undefined, name: string): string {
   return '';
 }
 
-// httpOnly keeps tokens out of JS; sameSite=lax survives top-level nav; secure only
-// in production (localhost is plain http). The refresh cookie is a session cookie
-// (no maxAge) so it lives until the browser closes; the access cookie expires with
-// the token so middleware knows when to refresh.
-const secure = process.env.NODE_ENV === 'production';
+// httpOnly keeps tokens out of JS; sameSite=lax survives top-level nav. The refresh
+// cookie is a session cookie (no maxAge) so it lives until the browser closes; the
+// access cookie expires with the token so middleware knows when to refresh.
+//
+// secure: on in production, off in dev. AUTH_COOKIE_SECURE overrides it — set it to
+// "false" for a production build served over plain http (the local container stack):
+// Safari drops Secure cookies on http://localhost, so login "succeeded" and bounced
+// straight back to the login page (Chromium treats localhost as secure, hiding it).
+export function cookieSecure(env: NodeJS.ProcessEnv = process.env): boolean {
+  const override = (env.AUTH_COOKIE_SECURE ?? '').trim().toLowerCase();
+  if (override === 'false') return false;
+  if (override === 'true') return true;
+  return env.NODE_ENV === 'production';
+}
+const secure = cookieSecure();
 const BASE_COOKIE = { httpOnly: true, sameSite: 'lax', secure, path: '/' } as const;
 
 /** Persist a token set as httpOnly cookies on a response. */
