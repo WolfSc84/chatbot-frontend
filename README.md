@@ -1,4 +1,4 @@
-# chatbot-frontend — web-interface simulator (BFF)
+# assistant-frontend — web-interface simulator (BFF)
 
 A **Next.js** web app that simulates a CRM/dashboard product with the generic assistant
 embedded in it. It is the third service of the assistant system and acts as a
