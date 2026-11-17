@@ -12,7 +12,8 @@ describe('workspacesFor', () => {
     expect(es.map((w) => w.id)).toEqual(en.map((w) => w.id));
     expect(es[0].prompt).toMatch(/alta|antibiótico/);
     expect(en[0].prompt).toMatch(/discharged/);
-    expect(workspacesFor('advanced_staff', 'en')[0].prompt).toMatch(/PICC/);
+    expect(workspacesFor('advanced_staff', 'en')[0].prompt).toMatch(/Maria Torres/);
+    expect(workspacesFor('advanced_staff', 'es').some((w) => /PICC/.test(w.prompt))).toBe(true);
   });
 
   it('is empty for tenants without suggestions', () => {

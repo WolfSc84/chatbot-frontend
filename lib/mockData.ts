@@ -140,11 +140,15 @@ const ADVANCED_CARE: Record<Lang, Workspace[]> = {
 
 const ADVANCED_STAFF: Record<Lang, Workspace[]> = {
   en: [
+    { id: 'adv-briefing', title: 'Brief me on my next patient', description: 'History, allergies, orders and today\'s plan.', icon: 'ClipboardList', prompt: "I'm driving to Maria Torres. What do I need to do on today's visit?" },
+    { id: 'adv-schedule', title: "Today's visit schedule", description: 'Who, where and when.', icon: 'MapPin', prompt: "What is my visit schedule for today?" },
     { id: 'adv-picc', title: 'PICC dressing protocol', description: 'Step by step, with the manual section.', icon: 'Stethoscope', prompt: 'What is our protocol for changing a PICC dressing?' },
     { id: 'adv-escalation', title: 'When to call the supervisor', description: 'Escalation and on-call guidance.', icon: 'PhoneCall', prompt: 'When should I call the on-call clinical supervisor?' },
     { id: 'adv-mileage', title: 'Mileage reimbursement', description: 'How to submit mileage (HR).', icon: 'Car', prompt: 'How do I get reimbursed for mileage?' },
   ],
   es: [
+    { id: 'adv-briefing', title: 'Resumen de mi próximo paciente', description: 'Historial, alergias, órdenes y plan de hoy.', icon: 'ClipboardList', prompt: 'Voy de camino a casa de María Torres, ¿qué tengo que hacer en la visita de hoy?' },
+    { id: 'adv-schedule', title: 'Mi agenda de hoy', description: 'Quién, dónde y a qué hora.', icon: 'MapPin', prompt: '¿Cuál es mi agenda de visitas de hoy?' },
     { id: 'adv-picc', title: 'Protocolo de vendaje PICC', description: 'Paso a paso, con la sección del manual.', icon: 'Stethoscope', prompt: '¿Cuál es nuestro protocolo para cambiar el vendaje de un PICC?' },
     { id: 'adv-escalation', title: 'Cuándo llamar al supervisor', description: 'Escalamiento y supervisor de guardia.', icon: 'PhoneCall', prompt: '¿Cuándo debo llamar al supervisor clínico de guardia?' },
     { id: 'adv-mileage', title: 'Reembolso de millaje', description: 'Cómo someter el millaje (RR.HH.).', icon: 'Car', prompt: '¿Cómo solicito el reembolso de millaje?' },
