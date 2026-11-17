@@ -1,3 +1,4 @@
+import type { Lang } from './i18n';
 import type { EntityItem, StatCardData, Workspace } from './types';
 
 export const CURRENT_USER = {
@@ -118,3 +119,42 @@ export const WORKSPACES: Workspace[] = [
   // Knowledge Center is its own tenant (not a Sales workspace) and Task Manager's
   // subagent was removed (decision D1) — both intentionally omitted from the Sales menu.
 ];
+
+// Advanced Healthcare demo (2026-11-17): one suggested prompt per demo scenario, in the
+// UI language, so the presenter clicks rather than types live. The prompt fills the
+// input; nothing is sent until the user presses send.
+const ADVANCED_CARE: Record<Lang, Workspace[]> = {
+  en: [
+    { id: 'adv-infusion', title: 'Hospital discharge — home IV', description: 'Home infusion and how care starts.', icon: 'HeartPulse', prompt: 'My mom is being discharged tomorrow on IV antibiotics. Can you do that at home?' },
+    { id: 'adv-referral', title: 'Refer a patient', description: 'Documents and channels for referrers.', icon: 'ClipboardList', prompt: "I'm a discharge planner. What do I need to refer a patient for home infusion?" },
+    { id: 'adv-hospice', title: 'Hospice guidance', description: 'When hospice is considered, with a person to talk to.', icon: 'Heart', prompt: 'My father has advanced cancer and his doctor mentioned hospice. When should hospice be considered?' },
+    { id: 'adv-coverage', title: 'Coverage & health plans', description: 'Towns served and how coverage is verified.', icon: 'MapPin', prompt: 'Do you serve Culebra, and do you accept my health plan?' },
+  ],
+  es: [
+    { id: 'adv-infusion', title: 'Alta del hospital — terapia IV en casa', description: 'Infusión en el hogar y cómo comienza el cuidado.', icon: 'HeartPulse', prompt: 'A mi mamá le dan de alta mañana con antibiótico IV, ¿ustedes lo ponen en casa?' },
+    { id: 'adv-referral', title: 'Referir un paciente', description: 'Documentos y canales para referidores.', icon: 'ClipboardList', prompt: 'Soy planificadora de alta. ¿Qué necesito para referir un paciente de infusión?' },
+    { id: 'adv-hospice', title: 'Orientación sobre hospicio', description: 'Cuándo se considera, con una persona para hablar.', icon: 'Heart', prompt: 'Mi papá tiene cáncer avanzado y el médico mencionó hospicio. ¿Cuándo se considera hospicio?' },
+    { id: 'adv-coverage', title: 'Cobertura y planes médicos', description: 'Pueblos que atendemos y cómo se verifica la cubierta.', icon: 'MapPin', prompt: '¿Llegan a Culebra y aceptan mi plan médico?' },
+  ],
+};
+
+const ADVANCED_STAFF: Record<Lang, Workspace[]> = {
+  en: [
+    { id: 'adv-picc', title: 'PICC dressing protocol', description: 'Step by step, with the manual section.', icon: 'Stethoscope', prompt: 'What is our protocol for changing a PICC dressing?' },
+    { id: 'adv-escalation', title: 'When to call the supervisor', description: 'Escalation and on-call guidance.', icon: 'PhoneCall', prompt: 'When should I call the on-call clinical supervisor?' },
+    { id: 'adv-mileage', title: 'Mileage reimbursement', description: 'How to submit mileage (HR).', icon: 'Car', prompt: 'How do I get reimbursed for mileage?' },
+  ],
+  es: [
+    { id: 'adv-picc', title: 'Protocolo de vendaje PICC', description: 'Paso a paso, con la sección del manual.', icon: 'Stethoscope', prompt: '¿Cuál es nuestro protocolo para cambiar el vendaje de un PICC?' },
+    { id: 'adv-escalation', title: 'Cuándo llamar al supervisor', description: 'Escalamiento y supervisor de guardia.', icon: 'PhoneCall', prompt: '¿Cuándo debo llamar al supervisor clínico de guardia?' },
+    { id: 'adv-mileage', title: 'Reembolso de millaje', description: 'Cómo someter el millaje (RR.HH.).', icon: 'Car', prompt: '¿Cómo solicito el reembolso de millaje?' },
+  ],
+};
+
+/** Suggested prompts for a tenant in the UI language; empty when it has none. */
+export function workspacesFor(product: string | null | undefined, lang: Lang): Workspace[] {
+  if (product === 'sales') return WORKSPACES;
+  if (product === 'advanced_care') return ADVANCED_CARE[lang];
+  if (product === 'advanced_staff') return ADVANCED_STAFF[lang];
+  return [];
+}

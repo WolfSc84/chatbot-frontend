@@ -16,6 +16,7 @@ import { useAssistant } from '@/context/AssistantContext';
 import { t } from '@/lib/i18n';
 import { IS_L1_SUPPORT_MODE, IS_LOGIN_ENABLED } from '@/lib/flags';
 import type { Workspace } from '@/lib/types';
+import { workspacesFor } from '@/lib/mockData';
 import { WorkspaceList } from './WorkspaceList';
 import { ChatView } from './ChatView';
 import { ChatInput } from './ChatInput';
@@ -222,8 +223,14 @@ export function AssistantPanel() {
                 </button>
               </div>
 
-              {/* Suggested workspaces are Sales-only; Knowledge Center starts empty. */}
-              {product === 'sales' && <WorkspaceList onSelect={handleWorkspace} />}
+              {/* Suggested prompts per tenant (lib/mockData.workspacesFor); none = empty. */}
+              {workspacesFor(product, uiLang).length > 0 && (
+                <WorkspaceList
+                  workspaces={workspacesFor(product, uiLang)}
+                  heading={t(uiLang, 'panel.workspaces')}
+                  onSelect={handleWorkspace}
+                />
+              )}
             </>
           )}
         </div>

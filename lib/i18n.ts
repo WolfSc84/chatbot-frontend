@@ -36,9 +36,10 @@ const STRINGS: Record<string, { en: string; es: string }> = {
   "panel.newChat": { en: "New Chat", es: "Nuevo chat" },
   "panel.chatHistory": { en: "Chat History", es: "Historial de chat" },
   "panel.disclaimer": {
-    en: "the support tool can make mistakes — verify policy details before client use.",
-    es: "la herramienta de soporte puede cometer errores — verifica los detalles antes de usarla con clientes.",
+    en: "The assistant can make mistakes — verify important details.",
+    es: "El asistente puede cometer errores — verifica los detalles importantes.",
   },
+  "panel.workspaces": { en: "Suggested", es: "Sugerencias" },
 
   // Input row
   "input.placeholder": {

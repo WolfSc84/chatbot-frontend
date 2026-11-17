@@ -1,12 +1,29 @@
 'use client';
 
-import { LineChart, Search, type LucideIcon } from 'lucide-react';
-import { WORKSPACES } from '@/lib/mockData';
+import {
+  Car,
+  ClipboardList,
+  Heart,
+  HeartPulse,
+  LineChart,
+  MapPin,
+  PhoneCall,
+  Search,
+  Stethoscope,
+  type LucideIcon,
+} from 'lucide-react';
 import type { Workspace } from '@/lib/types';
 
 const ICONS: Record<string, LucideIcon> = {
   Search,
   LineChart,
+  HeartPulse,
+  ClipboardList,
+  Heart,
+  MapPin,
+  Stethoscope,
+  PhoneCall,
+  Car,
 };
 
 const ICON_STYLES: Record<string, string> = {
@@ -14,11 +31,19 @@ const ICON_STYLES: Record<string, string> = {
   'market-insights': 'bg-emerald-100 text-emerald-600',
 };
 
-export function WorkspaceList({ onSelect }: { onSelect: (workspace: Workspace) => void }) {
+export function WorkspaceList({
+  workspaces,
+  heading,
+  onSelect,
+}: {
+  workspaces: Workspace[];
+  heading: string;
+  onSelect: (workspace: Workspace) => void;
+}) {
   return (
     <div className="space-y-2">
-      <p className="px-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Workspaces</p>
-      {WORKSPACES.map((ws) => {
+      <p className="px-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{heading}</p>
+      {workspaces.map((ws) => {
         const Icon = ICONS[ws.icon] ?? Search;
         return (
           <button
